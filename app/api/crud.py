@@ -34,8 +34,8 @@ def build_crud_router(
     create_model: type[BaseModel],
     update_model: type[BaseModel],
     out_model: type[BaseModel],
-    log_audit: bool = False,  # assume que tem campo urn
-    track_schema: bool = False,  # assume que tem campo structure
+    log_audit: bool = False,
+    track_schema: bool = False, 
 ) -> APIRouter:
     router = build_read_only_router(collection_name, out_model)
 

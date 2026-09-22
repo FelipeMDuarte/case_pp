@@ -120,7 +120,6 @@ async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClie
         ),
     )
 
-    # do jeito que uma pessoa realmente digitaria: minúsculo, parcial, plataforma em minúsculo
     response = await client.get("/metadata", params={"asset.name": "compra", "source.platform": "postgresql"})
 
     assert response.status_code == 200
@@ -130,8 +129,8 @@ async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClie
 async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient) -> None:
     await client.post("/metadata", json=make_payload())
 
-    # a busca é substring em Python puro, não regex do Mongo, então ".*" é só texto
-    # literal e não deveria casar com nada aqui (não é um coringa)
+    # a busca é substring em Python puro, então ".*" é só texto
+    # não deveria casar com nada aqui
     response = await client.get("/metadata", params={"asset.name": ".*"})
 
     assert response.status_code == 200
@@ -211,7 +210,7 @@ async def test_update_structure_logs_new_schema_version_with_added_column(client
 
     versions = (await client.get("/schema_versions")).json()
     assert len(versions) == 2
-    newest = versions[0]  # list() ordena por created_at desc, mais recente primeiro
+    newest = versions[0]
     assert len(newest["columns"]) == 2
     assert newest["change_summary"] == "coluna(s) adicionada(s): total"
 
