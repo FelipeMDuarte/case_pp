@@ -10,7 +10,8 @@ app/
   connectors/
     mongo_con.py     # MongoConnector genérico
   api/
-    crud.py          # factory de CRUD genérico
+    crud.py          # factories de router (build_read_only_router, build_crud_router)
+    utils.py         # efeitos colaterais das escritas (audit_events, schema_versions) e busca
     routers.py       # monta os routers de cada recurso e expõe all_routers
 ...
 ...
@@ -22,7 +23,7 @@ scripts/
   seed.py                    # popula a API com o exemplo acima
 ```
 
-Em `METADATA.md` temos o modelo de dados completo (`metadata`, `data_flows`, `audit_events`).
+Em `METADATA.md` temos o modelo de dados completo (`metadata`, `data_flows`, `audit_events`, `schema_versions`).
 
 ## Rodando com Docker
 
@@ -48,7 +49,7 @@ Com a API no ar (Docker ou local), rode em outro terminal:
 .venv/bin/python3 scripts/seed.py
 ```
 
-O script lê `metadata_sample.json` e faz `POST` em `/metadata` e `/data_flows` pelos endpoints reais da API — então os `audit_events` correspondentes são gerados sozinhos, como consequência normal do `POST`, sem precisar inserir manualmente. 
+O script lê `metadata_sample.json` e faz `POST` em `/metadata` e `/data_flows` pelos endpoints reais da API, então os `audit_events` correspondentes são gerados sozinhos, como consequência normal do `POST`, sem precisar inserir manualmente.
 
 ## Rodando localmente (sem Docker)
 
@@ -79,10 +80,10 @@ pytest --cov=app --cov-report=term-missing
 
 | Método | Rota                    | Descrição                                          |
 |--------|--------------------------|-----------------------------------------------------|
-| POST   | `/metadata`              | Cria um metadado (também loga um `audit_event`)     |
-| GET    | `/metadata`               | Lista metadados                                     |
+| POST   | `/metadata`              | Cria um metadado (também loga `audit_event` e, se tiver `structure`, `schema_version`) |
+| GET    | `/metadata`               | Lista metadados; aceita qualquer campo como busca parcial (`?asset.name=compras&source.platform=postgresql`) |
 | GET    | `/metadata/{id}`          | Busca por id                                        |
-| PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga um `audit_event`)|
+| PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga `audit_event`, e `schema_version` se mudar `structure`) |
 | DELETE | `/metadata/{id}`          | Remove (também loga um `audit_event`)               |
 | POST   | `/data_flows`             | Cria uma relação de fluxo entre dois metadados      |
 | GET    | `/data_flows`             | Lista fluxos                                        |
@@ -91,4 +92,6 @@ pytest --cov=app --cov-report=term-missing
 | DELETE | `/data_flows/{id}`        | Remove                                              |
 | GET    | `/audit_events`           | Lista eventos de auditoria (somente leitura)        |
 | GET    | `/audit_events/{id}`      | Busca por id                                        |
+| GET    | `/schema_versions`        | Lista o histórico de estrutura dos metadados (somente leitura) |
+| GET    | `/schema_versions/{id}`   | Busca por id                                        |
 | GET    | `/health`                 | Healthcheck                                         |
