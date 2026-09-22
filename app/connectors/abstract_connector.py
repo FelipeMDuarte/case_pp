@@ -1,0 +1,22 @@
+from abc import ABC, abstractmethod
+
+from pydantic import BaseModel
+
+
+class AbstractConnector(ABC):
+    """Contrato que qualquer connector de persistência precisa cumprir (Mongo, Postgres, etc.)."""
+
+    @abstractmethod
+    async def create(self, payload: BaseModel) -> dict: ...
+
+    @abstractmethod
+    async def get(self, id: str) -> dict | None: ...
+
+    @abstractmethod
+    async def list(self, skip: int = 0, limit: int = 100, filters: dict[str, str] | None = None) -> list[dict]: ...
+
+    @abstractmethod
+    async def update(self, id: str, payload: BaseModel) -> dict | None: ...
+
+    @abstractmethod
+    async def delete(self, id: str) -> bool: ...
