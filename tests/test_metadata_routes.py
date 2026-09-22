@@ -86,6 +86,58 @@ async def test_list_metadata_pagination(client: AsyncClient) -> None:
     assert len(response.json()) == 1
 
 
+async def test_search_metadata_by_urn(client: AsyncClient) -> None:
+    await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.a"))
+    await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.b"))
+
+    response = await client.get("/metadata", params={"urn": "urn:data:bigquery:test-project.sales.b"})
+
+    assert response.status_code == 200
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["urn"] == "urn:data:bigquery:test-project.sales.b"
+
+
+async def test_search_metadata_by_nested_field(client: AsyncClient) -> None:
+    await client.post("/metadata", json=make_payload(urn="urn:a", asset={"name": "a", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "SALES"}))
+    await client.post("/metadata", json=make_payload(urn="urn:b", asset={"name": "b", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "MARKETING"}))
+
+    response = await client.get("/metadata", params={"asset.domain": "MARKETING"})
+
+    assert response.status_code == 200
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["urn"] == "urn:b"
+
+
+async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClient) -> None:
+    await client.post(
+        "/metadata",
+        json=make_payload(
+            urn="urn:data:postgresql:erp-prod.public.compras",
+            asset={"name": "compras", "asset_type": "TABLE", "environment": "PRODUCTION"},
+            source={"platform": "POSTGRESQL", "fully_qualified_name": "erp-prod.public.compras"},
+        ),
+    )
+
+    # do jeito que uma pessoa realmente digitaria: minúsculo, parcial, plataforma em minúsculo
+    response = await client.get("/metadata", params={"asset.name": "compra", "source.platform": "postgresql"})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient) -> None:
+    await client.post("/metadata", json=make_payload())
+
+    # a busca é substring em Python puro, não regex do Mongo, então ".*" é só texto
+    # literal e não deveria casar com nada aqui (não é um coringa)
+    response = await client.get("/metadata", params={"asset.name": ".*"})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 async def test_get_metadata(client: AsyncClient) -> None:
     created = await client.post("/metadata", json=make_payload())
     metadata_id = created.json()["id"]
@@ -134,6 +186,78 @@ async def test_empty_patch_does_not_log_audit_event(client: AsyncClient) -> None
     assert response.status_code == 200
     events = (await client.get("/audit_events")).json()
     assert not any(e["event_type"] == "UPDATED" for e in events)
+
+
+async def test_create_metadata_with_structure_logs_schema_version(client: AsyncClient) -> None:
+    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
+
+    created = await client.post("/metadata", json=payload)
+    assert created.status_code == 201
+
+    versions = (await client.get("/schema_versions")).json()
+    assert len(versions) == 1
+    assert versions[0]["metadata_urn"] == payload["urn"]
+    assert versions[0]["columns"] == [{"name": "order_id", "data_type": "STRING", "description": None}]
+    assert versions[0]["change_summary"] == "estrutura inicial (1 coluna(s))"
+
+
+async def test_update_structure_logs_new_schema_version_with_added_column(client: AsyncClient) -> None:
+    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "total", "data_type": "NUMERIC"}]}
+    await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
+
+    versions = (await client.get("/schema_versions")).json()
+    assert len(versions) == 2
+    newest = versions[0]  # list() ordena por created_at desc, mais recente primeiro
+    assert len(newest["columns"]) == 2
+    assert newest["change_summary"] == "coluna(s) adicionada(s): total"
+
+
+async def test_update_structure_logs_removed_column(client: AsyncClient) -> None:
+    payload = make_payload(
+        structure={"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "legacy_flag", "data_type": "BOOLEAN"}]}
+    )
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}]}
+    await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
+
+    versions = (await client.get("/schema_versions")).json()
+    assert versions[0]["change_summary"] == "coluna(s) removida(s): legacy_flag"
+
+
+async def test_update_structure_logs_changed_column_type(client: AsyncClient) -> None:
+    payload = make_payload(structure={"columns": [{"name": "total", "data_type": "STRING"}]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    new_structure = {"columns": [{"name": "total", "data_type": "NUMERIC"}]}
+    await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
+
+    versions = (await client.get("/schema_versions")).json()
+    assert versions[0]["change_summary"] == "tipo alterado: total"
+
+
+async def test_unrelated_patch_does_not_log_schema_version(client: AsyncClient) -> None:
+    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    await client.patch(f"/metadata/{metadata_id}", json={"security_and_privacy": {"sensitivity": "RESTRICTED"}})
+
+    versions = (await client.get("/schema_versions")).json()
+    assert len(versions) == 1
+
+
+async def test_create_metadata_without_structure_does_not_log_schema_version(client: AsyncClient) -> None:
+    await client.post("/metadata", json=make_payload())
+
+    versions = (await client.get("/schema_versions")).json()
+    assert versions == []
 
 
 async def test_malformed_id_returns_404(client: AsyncClient) -> None:
