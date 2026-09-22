@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: case_pp-api:local
+    container_name: case_pp-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: dev
+      DEBUG: "true"
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: case_pp
+    depends_on:
+      - mongo
+    volumes:
+      - ./app:/code/app
+
+  mongo:
+    image: mongo:7
+    container_name: case_pp-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

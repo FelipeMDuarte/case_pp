@@ -1,0 +1,121 @@
+{
+  "fixture_version": "3.0.0",
+  "database": "case_pp",
+  "description": "Exemplo de metadado de pedidos.",
+  "collections": {
+    "metadata": [
+      {
+        "urn": "urn:data:bigquery:company-analytics-prod.sales.orders",
+        "asset": {
+          "name": "orders",
+          "display_name": "Pedidos",
+          "description": "Tabela analítica com um registro por pedido realizado pelos clientes.",
+          "asset_type": "TABLE",
+          "environment": "PRODUCTION",
+          "status": "ACTIVE",
+          "domain": "SALES",
+          "layer": "GOLD",
+          "tags": ["orders", "revenue"]
+        },
+        "source": {
+          "platform": "BIGQUERY",
+          "fully_qualified_name": "company-analytics-prod.sales.orders"
+        },
+        "business_metadata": {
+          "purpose": "Disponibilizar pedidos para análises de receita e comportamento de clientes.",
+          "grain": "Uma linha por pedido."
+        },
+        "ownership": {
+          "business_owner": {
+            "type": "TEAM",
+            "name": "Sales Operations",
+            "contact": "sales-operations@example.com"
+          },
+          "technical_owner": {
+            "type": "TEAM",
+            "name": "Data Engineering",
+            "contact": "data-engineering@example.com"
+          },
+          "data_steward": {
+            "type": "PERSON",
+            "name": "Sales",
+            "contact": "sales@example.com"
+          }
+        },
+        "security_and_privacy": {
+          "sensitivity": "CONFIDENTIAL",
+          "contains_personal_data": true,
+          "regulations": ["LGPD"]
+        },
+        "quality": {
+          "status": "PASSED",
+          "score": 0.97,
+          "checked_at": "2026-09-18T09:45:00Z",
+          "issues": []
+        },
+        "last_reviewed_at": "2026-09-01T12:00:00Z",
+        "created_at": "2026-01-15T13:00:00Z",
+        "updated_at": "2026-09-18T10:30:00Z"
+      },
+      {
+        "urn": "urn:data:postgresql:commerce-prod.public.orders",
+        "asset": {
+          "name": "orders",
+          "display_name": "Pedidos (operacional)",
+          "description": "Tabela transacional do sistema de vendas, origem dos pedidos antes do ETL.",
+          "asset_type": "TABLE",
+          "environment": "PRODUCTION",
+          "status": "ACTIVE",
+          "domain": "SALES",
+          "layer": "BRONZE",
+          "tags": ["orders"]
+        },
+        "source": {
+          "platform": "POSTGRESQL",
+          "fully_qualified_name": "commerce-prod.public.orders"
+        },
+        "business_metadata": {
+          "purpose": "Registrar pedidos no momento da compra.",
+          "grain": "Uma linha por pedido."
+        },
+        "ownership": {
+          "technical_owner": {
+            "type": "TEAM",
+            "name": "Data Engineering",
+            "contact": "data-engineering@example.com"
+          }
+        },
+        "security_and_privacy": {
+          "sensitivity": "CONFIDENTIAL",
+          "contains_personal_data": true,
+          "regulations": ["LGPD"]
+        },
+        "quality": null,
+        "last_reviewed_at": null,
+        "created_at": "2025-11-02T09:00:00Z",
+        "updated_at": "2025-11-02T09:00:00Z"
+      }
+    ],
+    "data_flows": [
+      {
+        "source_urn": "urn:data:postgresql:commerce-prod.public.orders",
+        "target_urn": "urn:data:bigquery:company-analytics-prod.sales.orders",
+        "transformation": "Extração incremental por updated_at, normalização e deduplicação.",
+        "active": true,
+        "created_at": "2026-01-15T13:05:00Z",
+        "updated_at": "2026-01-15T13:05:00Z"
+      }
+    ],
+    "audit_events": [
+      {
+        "metadata_urn": "urn:data:bigquery:company-analytics-prod.sales.orders",
+        "event_type": "UPDATED",
+        "occurred_at": "2026-09-18T10:35:00Z",
+        "actor": "sales@example.com",
+        "changed_fields": ["quality.status", "quality.score"],
+        "created_at": "2026-09-18T10:35:00Z",
+        "updated_at": "2026-09-18T10:35:00Z"
+      }
+    ]
+  }
+}
