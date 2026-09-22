@@ -11,9 +11,9 @@ settings = get_settings()
 
 @asynccontextmanager
 async def start_mongo(app: FastAPI):
-    app.state.mongo_client = AsyncIOMotorClient(settings.mongo_uri)
+    app.state.db_client = AsyncIOMotorClient(settings.mongo_uri)
     yield
-    app.state.mongo_client.close()
+    app.state.db_client.close()
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=start_mongo)

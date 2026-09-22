@@ -1,9 +1,18 @@
+from collections.abc import Callable
+
 from fastapi import Request
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import get_settings
+from app.connectors.abstract_connector import AbstractConnector
+from app.connectors.mongo_con import MongoConnector
 
+ConnectorFactory = Callable[[str], AbstractConnector]
 
-def get_database(request: Request) -> AsyncIOMotorDatabase:
+def get_connector_factory(request: Request) -> ConnectorFactory:
     settings = get_settings()
-    return request.app.state.mongo_client[settings.mongo_db]
+    database = request.app.state.db_client[settings.mongo_db]
+
+    def factory(collection_name: str) -> AbstractConnector:
+        return MongoConnector(database, collection_name)
+
+    return factory

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Owner(BaseModel):
@@ -50,7 +50,69 @@ class Quality(BaseModel):
     issues: list[str] = []
 
 
+class Column(BaseModel):
+    name: str
+    data_type: str
+    description: str | None = None
+
+
+class TableStructure(BaseModel):
+    columns: list[Column]
+
+
 class MetadataCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "urn": "urn:data:bigquery:company-analytics-prod.sales.orders",
+                    "asset": {
+                        "name": "orders",
+                        "display_name": "Pedidos",
+                        "description": "Tabela analítica com um registro por pedido realizado pelos clientes.",
+                        "asset_type": "TABLE",
+                        "environment": "PRODUCTION",
+                        "status": "ACTIVE",
+                        "domain": "SALES",
+                        "layer": "GOLD",
+                        "tags": ["orders", "revenue"],
+                    },
+                    "source": {
+                        "platform": "BIGQUERY",
+                        "fully_qualified_name": "company-analytics-prod.sales.orders",
+                    },
+                    "business_metadata": {
+                        "purpose": "Disponibilizar pedidos para análises de receita e comportamento de clientes.",
+                        "grain": "Uma linha por pedido.",
+                    },
+                    "ownership": {
+                        "business_owner": {
+                            "type": "TEAM",
+                            "name": "Sales Operations",
+                            "contact": "sales-operations@example.com",
+                        },
+                        "technical_owner": {
+                            "type": "TEAM",
+                            "name": "Data Engineering",
+                            "contact": "data-engineering@example.com",
+                        },
+                    },
+                    "security_and_privacy": {
+                        "sensitivity": "CONFIDENTIAL",
+                        "contains_personal_data": True,
+                        "regulations": ["LGPD"],
+                    },
+                    "structure": {
+                        "columns": [
+                            {"name": "order_id", "data_type": "STRING", "description": "Identificador único do pedido."},
+                            {"name": "gross_amount", "data_type": "NUMERIC", "description": "Valor bruto do pedido."},
+                        ]
+                    },
+                }
+            ]
+        }
+    )
+
     urn: str
     asset: AssetInfo
     source: Source
@@ -58,16 +120,22 @@ class MetadataCreate(BaseModel):
     ownership: Ownership
     security_and_privacy: SecurityAndPrivacy = SecurityAndPrivacy()
     quality: Quality | None = None
+    structure: TableStructure | None = None
     last_reviewed_at: datetime | None = None
 
 
 class MetadataUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"security_and_privacy": {"sensitivity": "RESTRICTED"}}]}
+    )
+
     asset: AssetInfo | None = None
     source: Source | None = None
     business_metadata: BusinessMetadata | None = None
     ownership: Ownership | None = None
     security_and_privacy: SecurityAndPrivacy | None = None
     quality: Quality | None = None
+    structure: TableStructure | None = None
     last_reviewed_at: datetime | None = None
 
 
