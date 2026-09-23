@@ -149,6 +149,10 @@ Usar no `id` da tabela do BigQuery (a que tem `structure`). Gera uma nova versã
 
 Sem corpo. Não remove o registro: seta `asset.status` pra `"DEPRECATED"` e ele continua existindo normalmente em `GET /metadata/{id}` (dá pra conferir o status mudado). Como a urn nunca some, um `data_flow` que aponte pra ela nunca fica órfão.
 
+### `DELETE /metadata/{id}` — erro: já estava deprecado (`410`)
+
+Sem corpo. Chamar `DELETE` de novo no mesmo `id` depois do primeiro (que já devolveu `204`) devolve `410 Gone`, não `204` de novo.
+
 ### `POST /metadata` — erro: URN duplicada (`409`)
 
 Repetir exatamente o primeiro JSON (tabela do Postgres) de novo:

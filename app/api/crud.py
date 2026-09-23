@@ -1,11 +1,13 @@
 from typing import Generic, TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from app.api.utils import (
+    already_deleted_message,
     dangling_reference_message,
     duplicate_message,
+    get_nested,
     not_found_message,
     query_filters,
     summarize_schema_change,
@@ -66,7 +68,11 @@ def build_crud_router(
     router = build_read_only_router(collection_name, out_model)
 
     @router.post("", response_model=out_model, status_code=201)
-    async def create(payload: create_model, connector_factory: ConnectorFactory = Depends(get_connector_factory)):  # type: ignore[valid-type]
+    async def create(
+        payload: create_model,  # type: ignore[valid-type]
+        response: Response,
+        connector_factory: ConnectorFactory = Depends(get_connector_factory),
+    ):
         if validate_refs:
             for field, ref_collection in validate_refs.items():
                 urn = getattr(payload, field)
@@ -84,6 +90,7 @@ def build_crud_router(
             columns = doc["structure"]["columns"]
             summary = f"estrutura inicial ({len(columns)} coluna(s))"
             await write_schema_version(connector_factory, doc["urn"], doc["structure"], change_summary=summary)
+        response.headers["Location"] = f"/{collection_name}/{doc['id']}"
         return doc
 
     @router.patch("/{item_id}", response_model=out_model)
@@ -112,6 +119,9 @@ def build_crud_router(
         if not doc:
             raise HTTPException(404, not_found_message(collection_name, item_id))
         if soft_delete:
+            already_deleted = all(get_nested(doc, field) == value for field, value in soft_delete.items())
+            if already_deleted:
+                raise HTTPException(410, already_deleted_message(collection_name, doc["urn"]))
             await connector.set_fields(item_id, soft_delete)
         else:
             await connector.delete(item_id)

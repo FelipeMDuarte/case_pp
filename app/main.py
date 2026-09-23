@@ -4,10 +4,13 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError
 
 from app.api.routers import all_routers
+from app.api.utils import validation_error_message
 from app.config import get_settings
 from app.logging_config import configure_logging, request_id_ctx
 
@@ -31,6 +34,11 @@ async def making_indexes_unique(database) -> None:
 
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=start_mongo)
+
+# Normalizando erro de 422 do pydantic com dos custom
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": validation_error_message(exc.errors())})
 
 
 @app.middleware("http")

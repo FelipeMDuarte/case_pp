@@ -20,7 +20,6 @@ async def test_schema_versions_are_read_only(client: AsyncClient) -> None:
     versions = (await client.get("/schema_versions")).json()["items"]
     version_id = versions[0]["id"]
 
-    # schema_versions não tem POST/PATCH/DELETE
     assert (await client.post("/schema_versions", json={})).status_code == 405
     assert (await client.patch(f"/schema_versions/{version_id}", json={})).status_code == 405
     assert (await client.delete(f"/schema_versions/{version_id}")).status_code == 405

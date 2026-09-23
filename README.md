@@ -4,16 +4,24 @@
 
 API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orquestrar a API e o banco.
 
-## Pontos de Evolução do Projeto
+## Escolhas de implementação
 
 ### PATCH em vez de PUT
-Mais adequado pra atualização parcial, PUT obrigaria reenviar a entidade inteira.
+ Mais adequado pra atualização parcial, PUT obrigaria reenviar a entidade inteira.
+
+### Busca por URN
+  É possível mas depende um pouco de escolhas do time sobre arquitetura e bancos
+
+## Pontos de Evolução do Projeto
 
 ### Modelagem 100% em Mongo não é ideal
   Relacionamentos ficariam mais naturais em SQL; NoSQL faz mais sentido pras tabelas de histórico/auditoria.
 
 ### Segurança (auth/autorização)
   Deixada de fora por ser um case, mas seria obrigatória em produção.
+
+### CORS
+  Não tem mas seria a primeira adição caso a API vá ser acessada por frontend
 
 ### Consistência/atomicidade
   audit_event e schema_version são escritos em chamadas separadas depois do write principal, se o processo cair no meio, perde o rastro de auditoria.
@@ -54,7 +62,8 @@ Em `METADATA.md` temos o modelo de dados completo (`metadata`, `data_flows`, `au
 Dev (`docker-compose.yml` — Mongo exposto em `localhost:27017`):
 
 ```bash
-docker compose up --build
+docker compose up -d --build
+docker compose logs -f api   # só o log da API, sem o log do Mongo junto
 ```
 
 Prod (`docker-compose.prod.yml` sem publicar a porta do Mongo):
@@ -112,7 +121,7 @@ ruff check .
 
 ## Logging
 
-Todo request gera um `request_id` (reaproveita o header `X-Request-ID` se o cliente já mandar um, senão gera um novo) e loga início, fim com status/duração, e o traceback completo se algo não tratado quebrar no meio — tudo com esse mesmo id, pra dar pra achar todas as linhas de um request específico no log. Nível `DEBUG` com `DEBUG=true`, `INFO` por padrão. O access log padrão do uvicorn fica desligado (`--no-access-log`) porque esse middleware já cobre a mesma informação com mais contexto.
+Todo request gera um `request_id` e loga início, fim com status/duração, e o traceback completo se algo não tratado quebrar no meio — tudo com esse mesmo id, pra dar pra achar todas as linhas de um request específico no log.
 
 ## Endpoints
 
@@ -122,7 +131,7 @@ Todo request gera um `request_id` (reaproveita o header `X-Request-ID` se o clie
 | GET    | `/metadata`               | Lista metadados; aceita qualquer campo como busca parcial (`?asset.name=compras&source.platform=postgresql`) |
 | GET    | `/metadata/{id}`          | Busca por id                                        |
 | PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga `audit_event`, e `schema_version` se mudar `structure`) |
-| DELETE | `/metadata/{id}`          | Soft delete: seta `asset.status = "DEPRECATED"`, o registro continua existindo (também loga um `audit_event`) |
+| DELETE | `/metadata/{id}`          | Soft delete: seta `asset.status = "DEPRECATED"`, o registro continua existindo (também loga um `audit_event`); `410` se já estava deprecado |
 | POST   | `/data_flows`             | Cria uma relação de fluxo entre dois metadados; `422` se `source_urn`/`target_urn` não existirem, `409` se o par já existir |
 | GET    | `/data_flows`             | Lista fluxos                                        |
 | GET    | `/data_flows/{id}`        | Busca por id                                        |

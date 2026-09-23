@@ -20,8 +20,6 @@ async def create_metadata(client: AsyncClient, urn: str) -> None:
 
 
 async def create_default_metadata_pair(client: AsyncClient) -> None:
-    # data_flows valida que source_urn/target_urn existem em metadata, então os testes
-    # precisam catalogar os dois lados antes de criar a relação entre eles
     await create_metadata(client, "urn:data:postgresql:commerce-prod.public.orders")
     await create_metadata(client, "urn:data:bigquery:test-project.sales.orders")
 
@@ -110,7 +108,6 @@ async def test_create_duplicate_data_flow_is_rejected(client: AsyncClient) -> No
     await create_default_metadata_pair(client)
     await client.post("/data_flows", json=make_payload())
 
-    # mesmo par source_urn/target_urn, só a transformação muda — ainda é duplicata
     response = await client.post("/data_flows", json=make_payload(transformation="outra descrição"))
 
     assert response.status_code == 409
