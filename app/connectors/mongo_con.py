@@ -31,21 +31,11 @@ class MongoConnector(AbstractConnector):
         return serialize(doc) if doc else None
 
     async def list(self, skip: int = 0, limit: int = 100, filters: dict[str, str] | None = None) -> list[dict]:
-        if not filters: # paginate do banco
-            cursor = self.collection.find().sort("created_at", -1).skip(skip).limit(limit)
-            return [serialize(doc) async for doc in cursor]
-
-        cursor = self.collection.find().sort("created_at", -1)
-        docs = [serialize(doc) async for doc in cursor]
-        docs = [doc for doc in docs if matches(doc, filters)]
-        return docs[skip : skip + limit]
+        cursor = self.collection.find(filters or {}).sort("created_at", -1).skip(skip).limit(limit)
+        return [serialize(doc) async for doc in cursor]
 
     async def count(self, filters: dict[str, str] | None = None) -> int:
-        if not filters:
-            return await self.collection.count_documents({})
-        cursor = self.collection.find()
-        docs = [serialize(doc) async for doc in cursor]
-        return sum(1 for doc in docs if matches(doc, filters))
+        return await self.collection.count_documents(filters or {})
 
     async def set_fields(self, id: str, fields: dict) -> dict | None:
         oid = to_object_id(id)
@@ -77,16 +67,6 @@ def to_object_id(id: str) -> ObjectId | None:
 def serialize(doc: dict) -> dict:
     doc["id"] = str(doc.pop("_id"))
     return doc
-
-
-def matches(doc: dict, filters: dict[str, str]) -> bool:
-    for field, value in filters.items():
-        actual = doc
-        for part in field.split("."):
-            actual = actual.get(part) if isinstance(actual, dict) else None
-        if actual is None or value.lower() not in str(actual).lower():
-            return False
-    return True
 
 
 def utcnow() -> datetime:

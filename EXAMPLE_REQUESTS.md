@@ -1,6 +1,6 @@
 # Requisições de exemplo
 
-JSONs prontos pra colar no Postman ou no "Try it out" do Swagger (`/docs`), cobrindo todas as rotas da API. Os exemplos abaixo são um cenário coerente — os mesmos `urn` se repetem entre `metadata` e `data_flows`, então seguir a ordem funciona de ponta a ponta.
+JSONs prontos pra colar no Postman ou no "Try it out" do Swagger (`/docs`), cobrindo todas as rotas da API. Os exemplos abaixo são um cenário coerente, os mesmos `urn` se repetem entre `metadata` e `data_flows`, então seguir a ordem funciona de ponta a ponta.
 
 Onde aparecer `{id}`, troque pelo `id` que veio na resposta do `POST` correspondente (o Mongo gera um novo a cada vez).
 
@@ -8,7 +8,7 @@ Todo `GET` de lista devolve um envelope, não um array solto: `{"items": [...], 
 
 ## `metadata`
 
-### `POST /metadata` — tabela de origem (Postgres)
+### `POST /metadata`: tabela de origem (Postgres)
 
 ```json
 {
@@ -47,7 +47,7 @@ Todo `GET` de lista devolve um envelope, não um array solto: `{"items": [...], 
 }
 ```
 
-### `POST /metadata` — tabela de destino (BigQuery, com `structure` e `quality`)
+### `POST /metadata`: tabela de destino (BigQuery, com `structure` e `quality`)
 
 Como tem `structure`, esse `POST` também gera uma versão em `schema_versions` sozinho.
 
@@ -105,25 +105,25 @@ Como tem `structure`, esse `POST` também gera uma versão em `schema_versions` 
 }
 ```
 
-### `GET /metadata` — lista tudo
+### `GET /metadata`: lista tudo
 
 Sem corpo. `GET /metadata`
 
-### `GET /metadata` — busca parcial, case-insensitive
+### `GET /metadata`: busca exata, case-sensitive
 
-Sem corpo, só query params. Qualquer campo vira filtro, inclusive aninhado:
+Sem corpo, só query params. Qualquer campo vira filtro, inclusive aninhado. A comparação é exata e case-sensitive:
 
 ```
-GET /metadata?asset.domain=sales
-GET /metadata?asset.name=orders&source.platform=bigquery
+GET /metadata?asset.domain=SALES
+GET /metadata?asset.status=ACTIVE&source.platform=BIGQUERY
 GET /metadata?skip=0&limit=10
 ```
 
-### `GET /metadata/{id}` — busca por id
+### `GET /metadata/{id}`: busca por id
 
 Sem corpo. `GET /metadata/{id}`
 
-### `PATCH /metadata/{id}` — atualização parcial
+### `PATCH /metadata/{id}`: atualização parcial
 
 Só muda `sensitivity`; `contains_personal_data`/`regulations` continuam como estavam (merge de verdade, não substitui a seção inteira).
 
@@ -135,9 +135,9 @@ Só muda `sensitivity`; `contains_personal_data`/`regulations` continuam como es
 }
 ```
 
-### `PATCH /metadata/{id}` — atualização parcial de bloco com campo obrigatório
+### `PATCH /metadata/{id}`: atualização parcial de bloco com campo obrigatório
 
-`asset` tem campos obrigatórios (`name`, `asset_type`, `environment`), mesmo assim o merge parcial funciona — não precisa reenviar o objeto inteiro:
+`asset` tem campos obrigatórios (`name`, `asset_type`, `environment`), mesmo assim o merge parcial funciona, não precisa reenviar o objeto inteiro:
 
 ```json
 {
@@ -147,7 +147,7 @@ Só muda `sensitivity`; `contains_personal_data`/`regulations` continuam como es
 }
 ```
 
-### `PATCH /metadata/{id}` — erro: `null` num bloco obrigatório (`422`)
+### `PATCH /metadata/{id}`, erro: `null` num bloco obrigatório (`422`)
 
 `asset`, `source` e `ownership` nunca podem ser nulos. Isso devolve `422`, não `204`/`200` com um documento quebrado:
 
@@ -157,7 +157,7 @@ Só muda `sensitivity`; `contains_personal_data`/`regulations` continuam como es
 }
 ```
 
-### `PATCH /metadata/{id}` — limpar a estrutura
+### `PATCH /metadata/{id}`: limpar a estrutura
 
 Usar no `id` da tabela do BigQuery (a que tem `structure`). Gera uma nova versão em `schema_versions` marcando as colunas como removidas.
 
@@ -167,15 +167,16 @@ Usar no `id` da tabela do BigQuery (a que tem `structure`). Gera uma nova versã
 }
 ```
 
-### `DELETE /metadata/{id}` — soft delete
+### `DELETE /metadata/{id}`: soft delete
 
-Sem corpo. Não remove o registro: seta `asset.status` pra `"DEPRECATED"` e ele continua existindo normalmente em `GET /metadata/{id}` (dá pra conferir o status mudado). Como a urn nunca some, um `data_flow` que aponte pra ela nunca fica órfão.
+Sem corpo. Não remove o registro: seta `asset.status` pra `"DEPRECATED"` e ele continua existindo normalmente em `GET /metadata/{id}`.
+Como a urn nunca some, um `data_flow` que aponte pra ela nunca fica órfão.
 
-### `DELETE /metadata/{id}` — erro: já estava deprecado (`410`)
+### `DELETE /metadata/{id}`, erro: já estava deprecado (`410`)
 
-Sem corpo. Chamar `DELETE` de novo no mesmo `id` depois do primeiro (que já devolveu `204`) devolve `410 Gone`, não `204` de novo.
+Sem corpo. Chamar `DELETE` de novo no mesmo `id` depois do primeiro devolve `410 Gone`, não `204` de novo.
 
-### `POST /metadata` — erro: URN duplicada (`409`)
+### `POST /metadata`, erro: URN duplicada (`409`)
 
 Repetir exatamente o primeiro JSON (tabela do Postgres) de novo:
 
@@ -190,7 +191,7 @@ Repetir exatamente o primeiro JSON (tabela do Postgres) de novo:
 }
 ```
 
-### `POST /metadata` — erro: campos obrigatórios faltando (`422`)
+### `POST /metadata`, erro: campos obrigatórios faltando (`422`)
 
 ```json
 {
@@ -198,7 +199,7 @@ Repetir exatamente o primeiro JSON (tabela do Postgres) de novo:
 }
 ```
 
-### `POST /metadata` — erro: valor fora do enum (`422`)
+### `POST /metadata`, erro: valor fora do enum (`422`)
 
 ```json
 {
@@ -220,7 +221,7 @@ Repetir exatamente o primeiro JSON (tabela do Postgres) de novo:
 
 ## `data_flows`
 
-### `POST /data_flows` — cria a relação entre as duas tabelas de `metadata`
+### `POST /data_flows`: cria a relação entre as duas tabelas de `metadata`
 
 Precisa que os dois `POST /metadata` acima já tenham sido feitos (a API valida que as duas URNs existem).
 
@@ -232,11 +233,11 @@ Precisa que os dois `POST /metadata` acima já tenham sido feitos (a API valida 
 }
 ```
 
-### `GET /data_flows` — lista tudo
+### `GET /data_flows`: lista tudo
 
 Sem corpo. `GET /data_flows`
 
-### `PATCH /data_flows/{id}` — desativar a relação
+### `PATCH /data_flows/{id}`: desativar a relação
 
 ```json
 {
@@ -248,11 +249,11 @@ Sem corpo. `GET /data_flows`
 
 Sem corpo. `DELETE /data_flows/{id}`
 
-### `POST /data_flows` — erro: mesma relação duplicada (`409`)
+### `POST /data_flows`, erro: mesma relação duplicada (`409`)
 
 Repetir o JSON de criação de novo, com o mesmo par `source_urn`/`target_urn`.
 
-### `POST /data_flows` — erro: URN que não existe em `metadata` (`422`)
+### `POST /data_flows`, erro: URN que não existe em `metadata` (`422`)
 
 ```json
 {
@@ -263,7 +264,7 @@ Repetir o JSON de criação de novo, com o mesmo par `source_urn`/`target_urn`.
 
 ## `audit_events` (somente leitura)
 
-Gerados sozinhos pelas escritas em `metadata` — não tem `POST`/`PATCH`/`DELETE` (tentar qualquer um desses devolve `405`).
+Gerados sozinhos pelas escritas em `metadata`, não tem `POST`/`PATCH`/`DELETE` (tentar qualquer um desses devolve `405`).
 
 ```
 GET /audit_events
@@ -272,7 +273,7 @@ GET /audit_events/{id}
 
 ## `schema_versions` (somente leitura)
 
-Gerados sozinhos quando `structure` é criado ou muda em `metadata` — mesma regra de só leitura.
+Gerados sozinhos quando `structure` é criado ou muda em `metadata`, mesma regra de só leitura.
 
 ```
 GET /schema_versions

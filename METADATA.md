@@ -32,7 +32,7 @@ Mandar `null` nesses limpa o campo por completo.
 
 ### Busca
 
-`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`. 
+`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`. A comparação é exata e case-sensitive.
 `skip` não pode ser negativo e `limit` vai de 1 até 100.
 ```
 GET /metadata?asset.name=compras&source.platform=postgresql

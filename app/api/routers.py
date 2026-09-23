@@ -21,6 +21,7 @@ data_flow_router = build_crud_router(
     DataFlowUpdate,
     DataFlowOut,
     validate_refs={"source_urn": "metadata", "target_urn": "metadata"},
+    forbid_self_reference=("source_urn", "target_urn"),
 )
 
 # Read-only

@@ -45,6 +45,15 @@ async def test_create_data_flow_with_unknown_urn_is_rejected(client: AsyncClient
     assert response.status_code == 422
 
 
+async def test_create_data_flow_rejects_self_reference(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+
+    same_urn = "urn:data:postgresql:commerce-prod.public.orders"
+    response = await client.post("/data_flows", json=make_payload(source_urn=same_urn, target_urn=same_urn))
+
+    assert response.status_code == 422
+
+
 async def test_list_data_flows(client: AsyncClient) -> None:
     await create_default_metadata_pair(client)
     await create_metadata(client, "urn:data:bigquery:test-project.sales.customers")

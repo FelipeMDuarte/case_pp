@@ -28,6 +28,10 @@ def already_deleted_message(resource: str, urn: str) -> str:
     return f"This {resource} ('{urn}') has already been marked as deprecated."
 
 
+def self_reference_message(field_a: str, field_b: str) -> str:
+    return f"'{field_a}' and '{field_b}' cannot be the same."
+
+
 def get_nested(doc: dict, dotted_path: str):
     value = doc
     for part in dotted_path.split("."):

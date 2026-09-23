@@ -11,6 +11,7 @@ from app.api.utils import (
     get_nested,
     not_found_message,
     query_filters,
+    self_reference_message,
     summarize_schema_change,
     validation_error_message,
     write_audit_event,
@@ -60,10 +61,11 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
 def merge_and_validate(old_doc: dict, changes: dict, out_model: type[BaseModel]) -> dict:
     merged_fields = {key: deep_merge(old_doc.get(key), value) for key, value in changes.items()}
     try:
-        out_model.model_validate({**old_doc, **merged_fields})
+        validated = out_model.model_validate({**old_doc, **merged_fields})
     except ValidationError as exc:
         raise HTTPException(422, validation_error_message(exc.errors())) from exc
-    return merged_fields
+    validated_dump = validated.model_dump()
+    return {key: validated_dump[key] for key in merged_fields}
 
 
 def build_crud_router(
@@ -74,7 +76,8 @@ def build_crud_router(
     log_audit: bool = False,
     track_schema: bool = False,
     validate_refs: dict[str, str] | None = None,  # para validar referencias de urn
-    soft_delete: dict[str, str] | None = None, 
+    forbid_self_reference: tuple[str, str] | None = None,
+    soft_delete: dict[str, str] | None = None,
 ) -> APIRouter:
     router = build_read_only_router(collection_name, out_model)
 
@@ -84,6 +87,10 @@ def build_crud_router(
         response: Response,
         connector_factory: ConnectorFactory = Depends(get_connector_factory),
     ):
+        if forbid_self_reference:
+            field_a, field_b = forbid_self_reference
+            if getattr(payload, field_a) == getattr(payload, field_b):
+                raise HTTPException(422, self_reference_message(field_a, field_b))
         if validate_refs:
             for field, ref_collection in validate_refs.items():
                 urn = getattr(payload, field)
@@ -125,8 +132,9 @@ def build_crud_router(
         if track_schema and "structure" in changed_fields:
             old_columns = (old_doc.get("structure") or {}).get("columns", [])
             new_columns = (doc.get("structure") or {}).get("columns", [])
-            summary = summarize_schema_change(old_columns, new_columns)
-            await write_schema_version(connector_factory, doc["urn"], doc.get("structure"), change_summary=summary)
+            if old_columns != new_columns:
+                summary = summarize_schema_change(old_columns, new_columns)
+                await write_schema_version(connector_factory, doc["urn"], doc.get("structure"), change_summary=summary)
         return doc
 
     @router.delete("/{item_id}", status_code=204)

@@ -23,6 +23,14 @@ async def test_create_metadata(client: AsyncClient) -> None:
     assert response.headers["location"] == f"/metadata/{body['id']}"
 
 
+async def test_created_at_keeps_timezone_after_round_trip(client: AsyncClient) -> None:
+    metadata_id = await create_metadata(client)
+
+    response = await client.get(f"/metadata/{metadata_id}")
+
+    assert response.json()["created_at"].endswith("Z")
+
+
 async def test_create_metadata_logs_audit_event(client: AsyncClient) -> None:
     await client.post("/metadata", json=make_payload())
 
@@ -148,7 +156,7 @@ async def test_search_metadata_by_nested_field(client: AsyncClient) -> None:
     assert results[0]["urn"] == "urn:b"
 
 
-async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClient) -> None:
+async def test_search_metadata_is_exact_and_case_sensitive(client: AsyncClient) -> None:
     await client.post(
         "/metadata",
         json=make_payload(
@@ -158,10 +166,14 @@ async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClie
         ),
     )
 
-    response = await client.get("/metadata", params={"asset.name": "compra", "source.platform": "postgresql"})
-
-    assert response.status_code == 200
+    response = await client.get("/metadata", params={"asset.name": "compras", "source.platform": "POSTGRESQL"})
     assert len(response.json()["items"]) == 1
+
+    response = await client.get("/metadata", params={"asset.name": "COMPRAS"})
+    assert response.json()["items"] == []
+
+    response = await client.get("/metadata", params={"asset.name": "compra"})
+    assert response.json()["items"] == []
 
 
 async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient) -> None:
@@ -364,6 +376,16 @@ async def test_update_structure_logs_changed_column_type(client: AsyncClient) ->
 
     versions = (await client.get("/schema_versions")).json()["items"]
     assert versions[0]["change_summary"] == "tipo alterado: total"
+
+
+async def test_update_with_identical_structure_does_not_log_schema_version(client: AsyncClient) -> None:
+    columns = {"columns": [{"name": "order_id", "data_type": "STRING"}]}
+    metadata_id = await create_metadata(client, structure=columns)
+
+    await client.patch(f"/metadata/{metadata_id}", json={"structure": columns})
+
+    versions = (await client.get("/schema_versions")).json()["items"]
+    assert len(versions) == 1
 
 
 async def test_unrelated_patch_does_not_log_schema_version(client: AsyncClient) -> None:

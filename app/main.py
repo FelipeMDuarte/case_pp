@@ -18,7 +18,7 @@ configure_logging(settings.debug)
 
 @asynccontextmanager
 async def start_mongo(app: FastAPI):
-    client = AsyncIOMotorClient(settings.mongo_uri)
+    client = AsyncIOMotorClient(settings.mongo_uri, tz_aware=True)
     app.state.db_client = client
     await making_indexes_unique(client[settings.mongo_db])
     yield
