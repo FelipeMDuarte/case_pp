@@ -1,18 +1,12 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.factories import make_metadata_payload
+
 pytestmark = pytest.mark.asyncio
 
 
-metadata_payload = {
-    "urn": "urn:data:bigquery:test-project.sales.orders",
-    "asset": {"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION"},
-    "source": {"platform": "BIGQUERY", "fully_qualified_name": "test-project.sales.orders"},
-    "ownership": {
-        "technical_owner": {"type": "TEAM", "name": "Data Engineering", "contact": "data-engineering@example.com"}
-    },
-    "structure": {"columns": [{"name": "order_id", "data_type": "STRING"}]},
-}
+metadata_payload = make_metadata_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
 
 
 async def test_schema_versions_are_read_only(client: AsyncClient) -> None:

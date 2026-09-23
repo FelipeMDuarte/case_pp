@@ -1,31 +1,14 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.factories import make_metadata_payload as make_payload
+
 pytestmark = pytest.mark.asyncio
 
 
-def make_payload(**overrides):
-    payload = {
-        "urn": "urn:data:bigquery:test-project.sales.orders",
-        "asset": {
-            "name": "orders",
-            "asset_type": "TABLE",
-            "environment": "PRODUCTION",
-        },
-        "source": {
-            "platform": "BIGQUERY",
-            "fully_qualified_name": "test-project.sales.orders",
-        },
-        "ownership": {
-            "technical_owner": {
-                "type": "TEAM",
-                "name": "Data Engineering",
-                "contact": "data-engineering@example.com",
-            }
-        },
-    }
-    payload.update(overrides)
-    return payload
+async def create_metadata(client: AsyncClient, **overrides) -> str:
+    response = await client.post("/metadata", json=make_payload(**overrides))
+    return response.json()["id"]
 
 
 async def test_create_metadata(client: AsyncClient) -> None:
@@ -192,8 +175,7 @@ async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient)
 
 
 async def test_get_metadata(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     response = await client.get(f"/metadata/{metadata_id}")
 
@@ -202,8 +184,7 @@ async def test_get_metadata(client: AsyncClient) -> None:
 
 
 async def test_update_metadata(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     response = await client.patch(
         f"/metadata/{metadata_id}",
@@ -216,11 +197,10 @@ async def test_update_metadata(client: AsyncClient) -> None:
 
 
 async def test_update_metadata_preserves_unsent_nested_fields(client: AsyncClient) -> None:
-    payload = make_payload(
-        security_and_privacy={"sensitivity": "CONFIDENTIAL", "contains_personal_data": True, "regulations": ["LGPD"]}
+    metadata_id = await create_metadata(
+        client,
+        security_and_privacy={"sensitivity": "CONFIDENTIAL", "contains_personal_data": True, "regulations": ["LGPD"]},
     )
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
 
     response = await client.patch(
         f"/metadata/{metadata_id}",
@@ -235,9 +215,9 @@ async def test_update_metadata_preserves_unsent_nested_fields(client: AsyncClien
 
 
 async def test_update_metadata_preserves_sibling_fields_not_sent(client: AsyncClient) -> None:
-    payload = make_payload(asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(
+        client, asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]}
+    )
 
     response = await client.patch(
         f"/metadata/{metadata_id}",
@@ -250,9 +230,7 @@ async def test_update_metadata_preserves_sibling_fields_not_sent(client: AsyncCl
 
 
 async def test_update_metadata_with_null_structure_clears_it(client: AsyncClient) -> None:
-    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client, structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
 
     response = await client.patch(f"/metadata/{metadata_id}", json={"structure": None})
 
@@ -265,8 +243,7 @@ async def test_update_metadata_with_null_structure_clears_it(client: AsyncClient
 
 
 async def test_update_rejects_null_on_required_blocks(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     for field in ("asset", "source", "ownership"):
         response = await client.patch(f"/metadata/{metadata_id}", json={field: None})
@@ -278,9 +255,9 @@ async def test_update_rejects_null_on_required_blocks(client: AsyncClient) -> No
 
 
 async def test_update_asset_partial_preserves_other_asset_fields(client: AsyncClient) -> None:
-    payload = make_payload(asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(
+        client, asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]}
+    )
 
     response = await client.patch(f"/metadata/{metadata_id}", json={"asset": {"status": "INACTIVE"}})
 
@@ -292,8 +269,7 @@ async def test_update_asset_partial_preserves_other_asset_fields(client: AsyncCl
 
 
 async def test_update_sets_nested_field_that_was_previously_null(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     response = await client.patch(
         f"/metadata/{metadata_id}",
@@ -307,8 +283,7 @@ async def test_update_sets_nested_field_that_was_previously_null(client: AsyncCl
 
 
 async def test_update_rejects_incomplete_block_that_was_previously_null(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     # quality nunca foi setado (é null); mandar só um campo não dá pra formar um Quality válido
     response = await client.patch(f"/metadata/{metadata_id}", json={"quality": {"score": 0.8}})
@@ -319,8 +294,7 @@ async def test_update_rejects_incomplete_block_that_was_previously_null(client: 
 
 
 async def test_update_metadata_logs_audit_event(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     await client.patch(
         f"/metadata/{metadata_id}",
@@ -334,8 +308,7 @@ async def test_update_metadata_logs_audit_event(client: AsyncClient) -> None:
 
 
 async def test_empty_patch_does_not_log_audit_event(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     response = await client.patch(f"/metadata/{metadata_id}", json={})
 
@@ -358,9 +331,7 @@ async def test_create_metadata_with_structure_logs_schema_version(client: AsyncC
 
 
 async def test_update_structure_logs_new_schema_version_with_added_column(client: AsyncClient) -> None:
-    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client, structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
 
     new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "total", "data_type": "NUMERIC"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
@@ -373,11 +344,10 @@ async def test_update_structure_logs_new_schema_version_with_added_column(client
 
 
 async def test_update_structure_logs_removed_column(client: AsyncClient) -> None:
-    payload = make_payload(
-        structure={"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "legacy_flag", "data_type": "BOOLEAN"}]}
+    metadata_id = await create_metadata(
+        client,
+        structure={"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "legacy_flag", "data_type": "BOOLEAN"}]},
     )
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
 
     new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
@@ -387,9 +357,7 @@ async def test_update_structure_logs_removed_column(client: AsyncClient) -> None
 
 
 async def test_update_structure_logs_changed_column_type(client: AsyncClient) -> None:
-    payload = make_payload(structure={"columns": [{"name": "total", "data_type": "STRING"}]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client, structure={"columns": [{"name": "total", "data_type": "STRING"}]})
 
     new_structure = {"columns": [{"name": "total", "data_type": "NUMERIC"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
@@ -399,9 +367,7 @@ async def test_update_structure_logs_changed_column_type(client: AsyncClient) ->
 
 
 async def test_unrelated_patch_does_not_log_schema_version(client: AsyncClient) -> None:
-    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
-    created = await client.post("/metadata", json=payload)
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client, structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
 
     await client.patch(f"/metadata/{metadata_id}", json={"security_and_privacy": {"sensitivity": "RESTRICTED"}})
 
@@ -431,8 +397,7 @@ async def test_malformed_id_returns_404(client: AsyncClient) -> None:
 
 
 async def test_delete_metadata_is_a_soft_delete(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     response = await client.delete(f"/metadata/{metadata_id}")
     assert response.status_code == 204
@@ -446,8 +411,7 @@ async def test_delete_metadata_is_a_soft_delete(client: AsyncClient) -> None:
 
 
 async def test_delete_already_deprecated_metadata_returns_410(client: AsyncClient) -> None:
-    created = await client.post("/metadata", json=make_payload())
-    metadata_id = created.json()["id"]
+    metadata_id = await create_metadata(client)
 
     first = await client.delete(f"/metadata/{metadata_id}")
     assert first.status_code == 204
@@ -457,9 +421,8 @@ async def test_delete_already_deprecated_metadata_returns_410(client: AsyncClien
 
 
 async def test_delete_metadata_referenced_by_data_flow_does_not_orphan_it(client: AsyncClient) -> None:
-    source = await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.source"))
-    await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.target"))
-    source_id = source.json()["id"]
+    source_id = await create_metadata(client, urn="urn:data:bigquery:test-project.sales.source")
+    await create_metadata(client, urn="urn:data:bigquery:test-project.sales.target")
     await client.post(
         "/data_flows",
         json={

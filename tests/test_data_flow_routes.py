@@ -1,22 +1,13 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.factories import make_metadata_payload
+
 pytestmark = pytest.mark.asyncio
 
 
-def make_metadata_payload(urn: str) -> dict:
-    return {
-        "urn": urn,
-        "asset": {"name": urn, "asset_type": "TABLE", "environment": "PRODUCTION"},
-        "source": {"platform": "BIGQUERY", "fully_qualified_name": urn},
-        "ownership": {
-            "technical_owner": {"type": "TEAM", "name": "Data Engineering", "contact": "data-engineering@example.com"}
-        },
-    }
-
-
 async def create_metadata(client: AsyncClient, urn: str) -> None:
-    await client.post("/metadata", json=make_metadata_payload(urn))
+    await client.post("/metadata", json=make_metadata_payload(urn=urn))
 
 
 async def create_default_metadata_pair(client: AsyncClient) -> None:

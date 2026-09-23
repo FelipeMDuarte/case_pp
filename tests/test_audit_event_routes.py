@@ -1,21 +1,13 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.factories import make_metadata_payload
+
 pytestmark = pytest.mark.asyncio
 
 
-metadata_payload = {
-    "urn": "urn:data:bigquery:test-project.sales.orders",
-    "asset": {"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION"},
-    "source": {"platform": "BIGQUERY", "fully_qualified_name": "test-project.sales.orders"},
-    "ownership": {
-        "technical_owner": {"type": "TEAM", "name": "Data Engineering", "contact": "data-engineering@example.com"}
-    },
-}
-
-
 async def test_audit_events_are_read_only(client: AsyncClient) -> None:
-    await client.post("/metadata", json=metadata_payload)
+    await client.post("/metadata", json=make_metadata_payload())
     events = (await client.get("/audit_events")).json()["items"]
     event_id = events[0]["id"]
 
@@ -26,7 +18,7 @@ async def test_audit_events_are_read_only(client: AsyncClient) -> None:
 
 
 async def test_get_audit_event(client: AsyncClient) -> None:
-    await client.post("/metadata", json=metadata_payload)
+    await client.post("/metadata", json=make_metadata_payload())
     events = (await client.get("/audit_events")).json()["items"]
     event_id = events[0]["id"]
 
