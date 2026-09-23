@@ -4,6 +4,8 @@ JSONs prontos pra colar no Postman ou no "Try it out" do Swagger (`/docs`), cobr
 
 Onde aparecer `{id}`, troque pelo `id` que veio na resposta do `POST` correspondente (o Mongo gera um novo a cada vez).
 
+Todo `GET` de lista devolve um envelope, não um array solto: `{"items": [...], "total": N, "skip": 0, "limit": 100}`.
+
 ## `metadata`
 
 ### `POST /metadata` — tabela de origem (Postgres)
@@ -143,9 +145,9 @@ Usar no `id` da tabela do BigQuery (a que tem `structure`). Gera uma nova versã
 }
 ```
 
-### `DELETE /metadata/{id}`
+### `DELETE /metadata/{id}` — soft delete
 
-Sem corpo. `DELETE /metadata/{id}`
+Sem corpo. Não remove o registro: seta `asset.status` pra `"DEPRECATED"` e ele continua existindo normalmente em `GET /metadata/{id}` (dá pra conferir o status mudado). Como a urn nunca some, um `data_flow` que aponte pra ela nunca fica órfão.
 
 ### `POST /metadata` — erro: URN duplicada (`409`)
 

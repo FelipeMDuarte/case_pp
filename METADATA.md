@@ -20,6 +20,10 @@ A unicidade é garantida por um índice único de verdade (`urn`, criado no star
 
 Os campos com valor fechado (`asset_type`, `environment`, `status`, `layer`, `sensitivity`, `quality.status`, `ownership.*.type`, `audit_events.event_type`) são `Enum` .
 
+### Delete é soft delete
+
+`DELETE /metadata/{id}` não remove o documento: seta `asset.status = "DEPRECATED"` e continua existindo normalmente pra quem consultar (rastreabilidade é o ponto central de um catálogo de governança — sumir com o registro apagaria o histórico). Consequência prática: um `data_flow` que referencia essa urn nunca fica órfão, porque a urn nunca deixa de existir. `data_flows` continua com `DELETE` de verdade (hard delete) — o soft-delete ali já é resolvido pelo campo `active`, alternado via `PATCH`.
+
 ### Atualização parcial (PATCH)
 
 `PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos.
@@ -34,6 +38,14 @@ GET /metadata?asset.domain=sales
 ```
 
 A comparação é feita em Python (`MongoConnector.matches()`), não como query do Mongo: a coleção inteira é lida e o filtro é aplicado em memória antes de paginar. Deliberadamente simples: sem `$regex`, sem escapar nada, sem risco de interpretar o valor digitado como padrão de busca. O trade-off é escala: num catálogo com muitos milhares de ativos isso lê a coleção inteira a cada busca. Pra esse tamanho de projeto, a simplicidade venceu; numa base bem maior, valeria migrar pra um índice de texto do Mongo (ou Atlas Search/Elasticsearch).
+
+### Paginação
+
+Todo `GET` de lista devolve um envelope, não um array solto, pra quem está paginando saber quantas páginas existem sem precisar ficar tentando:
+
+```json
+{ "items": [...], "total": 42, "skip": 0, "limit": 100 }
+```
 
 ### `asset`
 
@@ -103,7 +115,7 @@ Representa o fluxo interno de dados: de onde um dado veio e pra onde foi. Uma re
 | `transformation` | Descrição livre e opcional do que foi feito nos dados entre `source` e `target`. |
 | `active` | `false` quando a relação deixou de existir |
 
-`source_urn` e `target_urn` precisam corresponder a um `metadata` já cadastrado. 
+`source_urn` e `target_urn` precisam corresponder a um `metadata` já cadastrado (`422` se não existir).
 
 ## `audit_events`
 

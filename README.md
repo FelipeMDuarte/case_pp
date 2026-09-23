@@ -1,5 +1,7 @@
 # case_pp
 
+![CI](https://github.com/FelipeMDuarte/case_pp/actions/workflows/ci.yml/badge.svg)
+
 API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orquestrar a API e o banco.
 
 ## Estrutura
@@ -13,6 +15,7 @@ app/
     crud.py          # factories de router (build_read_only_router, build_crud_router)
     utils.py         # efeitos colaterais das escritas (audit_events, schema_versions) e busca
     routers.py       # monta os routers de cada recurso e expõe all_routers
+  logging_config.py  # configuração de logging + request-id por request
 ...
 ...
 .env.example                # variáveis dev
@@ -59,7 +62,7 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 
 # suba um mongo local (ou use docker compose up mongo)
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --no-access-log
 ```
 
 ## Testes
@@ -76,6 +79,20 @@ Cobertura:
 pytest --cov=app --cov-report=term-missing
 ```
 
+Lint (`ruff`, config em `pyproject.toml`):
+
+```bash
+ruff check .
+```
+
+## CI
+
+`.github/workflows/ci.yml` roda lint (`ruff`) e os testes a cada push/PR na `main` — o mesmo que rodar localmente, só que automático.
+
+## Logging
+
+Todo request gera um `request_id` (reaproveita o header `X-Request-ID` se o cliente já mandar um, senão gera um novo) e loga início, fim com status/duração, e o traceback completo se algo não tratado quebrar no meio — tudo com esse mesmo id, pra dar pra achar todas as linhas de um request específico no log. Nível `DEBUG` com `DEBUG=true`, `INFO` por padrão. O access log padrão do uvicorn fica desligado (`--no-access-log`) porque esse middleware já cobre a mesma informação com mais contexto.
+
 ## Endpoints
 
 | Método | Rota                    | Descrição                                          |
@@ -84,7 +101,7 @@ pytest --cov=app --cov-report=term-missing
 | GET    | `/metadata`               | Lista metadados; aceita qualquer campo como busca parcial (`?asset.name=compras&source.platform=postgresql`) |
 | GET    | `/metadata/{id}`          | Busca por id                                        |
 | PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga `audit_event`, e `schema_version` se mudar `structure`) |
-| DELETE | `/metadata/{id}`          | Remove (também loga um `audit_event`)               |
+| DELETE | `/metadata/{id}`          | Soft delete: seta `asset.status = "DEPRECATED"`, o registro continua existindo (também loga um `audit_event`) |
 | POST   | `/data_flows`             | Cria uma relação de fluxo entre dois metadados; `422` se `source_urn`/`target_urn` não existirem, `409` se o par já existir |
 | GET    | `/data_flows`             | Lista fluxos                                        |
 | GET    | `/data_flows/{id}`        | Busca por id                                        |
@@ -96,3 +113,5 @@ pytest --cov=app --cov-report=term-missing
 | GET    | `/schema_versions/{id}`   | Busca por id                                        |
 | GET    | `/health`                 | Liveness — só confirma que a API está de pé, não depende do Mongo |
 | GET    | `/health/database`        | Readiness — dá `ping` no Mongo de verdade; `503` se não responder |
+
+Todo `GET` de lista devolve um envelope de paginação, não um array solto: `{"items": [...], "total": N, "skip": 0, "limit": 100}`.
