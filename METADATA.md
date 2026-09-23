@@ -16,37 +16,32 @@ Este documento descreve o formato usado para armazenar os metadados no MongoDB.
 
 `metadata.urn` é o identificador global do dado, é usado como FK no Mongo.
 A URN não muda por causa de alterações de descrição, ownership ou classificação.
-A unicidade é garantida por um índice único de verdade (`urn`, criado no startup da API) — tentar criar dois metadados com a mesma URN devolve `409 Conflict`. Mesma coisa pra `data_flows`, no par (`source_urn`, `target_urn`): a mesma relação não pode ser declarada duas vezes, só atualizada via `PATCH`.
+A unicidade é garantida por um índice único, tentar criar dois metadados com a mesma URN devolve `409 Conflict`.
+Mesma coisa pra `data_flows`, no par (`source_urn`, `target_urn`)
 
 Os campos com valor fechado (`asset_type`, `environment`, `status`, `layer`, `sensitivity`, `quality.status`, `ownership.*.type`, `audit_events.event_type`) são `Enum` .
 
 ### Delete é soft delete
 
-`DELETE /metadata/{id}` não remove o documento: seta `asset.status = "DEPRECATED"` e continua existindo normalmente pra quem consultar (rastreabilidade é o ponto central de um catálogo de governança — sumir com o registro apagaria o histórico). Consequência prática: um `data_flow` que referencia essa urn nunca fica órfão, porque a urn nunca deixa de existir. `data_flows` continua com `DELETE` de verdade (hard delete) — o soft-delete ali já é resolvido pelo campo `active`, alternado via `PATCH`.
-
-Chamar `DELETE` de novo num metadado que já está `DEPRECATED` devolve `410 Gone`, não `204` — repetir o delete não é um no-op silencioso, o cliente precisa saber que aquele registro já tinha sido desativado antes dessa chamada.
+`DELETE /metadata/{id}` não remove o documento: seta como deprecated, para manter rastreabilidade.
 
 ### Atualização parcial (PATCH)
 
-`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"asset": {"status": "INACTIVE"}}` só muda `status`, sem exigir `name`/`asset_type`/`environment` de novo e sem apagar o resto do `asset`. Isso vale pra qualquer bloco aninhado (`asset`, `source`, `ownership.business_owner`, etc.), inclusive quando o campo estava `null` antes (o merge cria o objeto do zero com o que foi mandado).
-
-Bloco obrigatório (não-nulo) não aceita `null` explícito — `{"asset": null}` devolve `422`, não `204`/`200` com um documento quebrado. Só os campos que já são opcionais em `MetadataOut` (`quality`, `structure`, `last_reviewed_at`) aceitam `null` como forma de limpar. Mandar `null` nesses (ex: `{"structure": null}`) limpa o campo por completo — isso é tratado como "a estrutura mudou pra vazia" e também gera uma versão em `schema_versions`.
-
-Antes de gravar, o documento já mesclado com a mudança é validado contra o schema de saída — se o resultado não fechar um objeto válido (ex: `{"quality": {"score": 0.8}}` quando `quality` ainda era `null`, faltando `status`/`checked_at`), a API devolve `422` em vez de gravar um registro incompleto que quebraria numa leitura futura.
+Bloco obrigatório (não-nulo) não aceita `null` explícito. Só os campos que já são opcionais aceitam `null` como forma de limpar.
+Mandar `null` nesses limpa o campo por completo.
 
 ### Busca
 
-`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`, inclusive em campo aninhado via notação de ponto. `skip` não pode ser negativo e `limit` vai de 1 até 100.
+`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`. 
+`skip` não pode ser negativo e `limit` vai de 1 até 100.
 ```
 GET /metadata?asset.name=compras&source.platform=postgresql
 GET /metadata?asset.domain=sales
 ```
 
-A comparação é feita em Python (`MongoConnector.matches()`), não como query do Mongo: a coleção inteira é lida e o filtro é aplicado em memória antes de paginar. Deliberadamente simples: sem `$regex`, sem escapar nada, sem risco de interpretar o valor digitado como padrão de busca. O trade-off é escala: num catálogo com muitos milhares de ativos isso lê a coleção inteira a cada busca. Pra esse tamanho de projeto, a simplicidade venceu; numa base bem maior, valeria migrar pra um índice de texto do Mongo (ou Atlas Search/Elasticsearch).
-
 ### Paginação
 
-Todo `GET` de lista devolve um envelope, não um array solto, pra quem está paginando saber quantas páginas existem sem precisar ficar tentando:
+Todo `GET` de lista devolve um envelope, não um array solto, pra quem está paginando saber quantas páginas existem.
 
 ```json
 { "items": [...], "total": 42, "skip": 0, "limit": 100 }
@@ -103,7 +98,7 @@ A estrutura atual do dado (só faz sentido pra `asset_type: TABLE`/`VIEW`, mas o
 { "columns": [{ "name": "order_id", "data_type": "STRING", "description": "..." }] }
 ```
 
-Cada vez que `structure` muda (na criação ou num `PATCH`), a API grava automaticamente um snapshot em `schema_versions`: é assim que a evolução do schema ao longo do tempo é rastreada. Ver a seção `schema_versions` abaixo.
+Cada vez que `structure` muda, a API grava um snapshot em `schema_versions`, é assim que a evolução do schema ao longo do tempo é rastreada.
 
 ### `last_reviewed_at`
 
@@ -111,7 +106,7 @@ Data da última revisão do dado (owner, classificação, documentação).
 
 ## `data_flows`
 
-Representa o fluxo interno de dados: de onde um dado veio e pra onde foi. Uma relação por registro.
+Representa o fluxo interno de dados, de onde um dado veio e pra onde foi. Uma relação por registro.
 
 | Campo | Significado |
 |---|---|
@@ -138,13 +133,13 @@ Diferente de `metadata` e `data_flows`, `audit_events` não tem `PATCH`/`DELETE`
 
 ## `schema_versions`
 
-Um snapshot imutável da estrutura (`structure.columns`) de um documento de `metadata`, gravado toda vez que ela muda. É o que permite responder "como essa tabela era há 3 meses?" ou "quando a coluna X foi adicionada?".
+Um snapshot imutável da estrutura de um documento de `metadata`, gravado toda vez que ela muda.
 
 | Campo | Significado |
 |---|---|
 | `metadata_urn` | URN do metadado cuja estrutura mudou. |
-| `columns` | Snapshot completo das colunas nesse momento (não só o diff). |
-| `change_summary` | Resumo gerado automaticamente do que mudou em relação à versão anterior: colunas adicionadas, removidas ou com tipo alterado. Na primeira versão, indica só a contagem inicial de colunas. |
+| `columns` | Snapshot completo das colunas nesse momento. |
+| `change_summary` | Resumo do que mudou em relação à versão anterior: colunas adicionadas, removidas ou com tipo alterado. Na primeira versão, indica só a contagem inicial de colunas. |
 | `detected_at` | Quando essa versão foi gravada. |
 
 Assim como `audit_events`, não tem `PATCH`/`DELETE`, porque cada versão é um fato histórico, não algo editável.
