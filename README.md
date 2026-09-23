@@ -4,6 +4,27 @@
 
 API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orquestrar a API e o banco.
 
+## Pontos de Evolução do Projeto
+
+### PATCH em vez de PUT
+Mais adequado pra atualização parcial, PUT obrigaria reenviar a entidade inteira.
+
+### Modelagem 100% em Mongo não é ideal
+  Relacionamentos ficariam mais naturais em SQL; NoSQL faz mais sentido pras tabelas de histórico/auditoria.
+
+### Segurança (auth/autorização)
+  Deixada de fora por ser um case, mas seria obrigatória em produção.
+
+### Consistência/atomicidade
+  audit_event e schema_version são escritos em chamadas separadas depois do write principal, se o processo cair no meio, perde o rastro de auditoria.
+  Pediria transação multi-documento (replica set) ou padrão outbox.
+
+### Busca com filtro 
+  Lê a coleção inteira pra RAM antes de filtrar não escala com volume real, produção pediria melhora/mudança.
+
+### Versionamento de API
+  Seria feito conforme necessário via prefix no include_router do FastAPI
+
 ## Estrutura
 
 ```
