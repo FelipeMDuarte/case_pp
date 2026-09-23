@@ -16,7 +16,7 @@ API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orque
   Filtro vira query nativa do Mongo (dot-notation direto, `?asset.status=ACTIVE`), case-sensitive. Paginação e contagem são nativas do Mongo em qualquer busca, com ou sem filtro.
 
 ### Filtro sem whitelist nem conversão de tipo
-  Qualquer campo do payload vira filtro, mas chega como string, então campo booleano/numérico (`active`, `quality.score`, `contains_personal_data`) nunca bate, e campo inexistente (`?typo=x`) devolve 200 com lista vazia em vez de erro. 
+  Qualquer campo do payload vira filtro, como string, então campo booleano/numérico (`active`, `quality.score`, `contains_personal_data`) nunca bate, e campo inexistente (`?typo=x`) devolve 200 com lista vazia em vez de erro. 
   Bloqueei a parte perigosa, chave com `$`, que virava operador do Mongo. 
   O resto pediria uma whitelist de campos filtráveis derivada do modelo, convertendo o tipo certo por campo.
 

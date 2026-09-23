@@ -32,7 +32,8 @@ Mandar `null` nesses limpa o campo por completo.
 
 ### Busca
 
-`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`. A comparação é exata e case-sensitive. O filtro vira a query do Mongo diretamente, então uma chave contendo `$` (`$where`, `$or`, etc.) é rejeitada com `422` antes de chegar no banco, para não expor operadores do Mongo pela URL.
+`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`. A comparação é exata e case-sensitive.
+O filtro vira a query do Mongo diretamente, então uma chave contendo `$` é rejeitada antes de chegar no banco, para não expor operadores do Mongo.
 `skip` não pode ser negativo e `limit` vai de 1 até 100.
 ```
 GET /metadata?asset.name=compras&source.platform=POSTGRESQL
