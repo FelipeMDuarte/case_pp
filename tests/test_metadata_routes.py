@@ -45,7 +45,7 @@ async def test_create_metadata_logs_audit_event(client: AsyncClient) -> None:
     response = await client.get("/audit_events")
 
     assert response.status_code == 200
-    events = response.json()
+    events = response.json()["items"]
     assert len(events) == 1
     assert events[0]["event_type"] == "CREATED"
     assert events[0]["metadata_urn"] == "urn:data:bigquery:test-project.sales.orders"
@@ -58,7 +58,9 @@ async def test_list_metadata(client: AsyncClient) -> None:
     response = await client.get("/metadata")
 
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    body = response.json()
+    assert len(body["items"]) == 2
+    assert body["total"] == 2
 
 
 async def test_get_metadata_not_found(client: AsyncClient) -> None:
@@ -101,16 +103,18 @@ async def test_list_metadata_pagination(client: AsyncClient) -> None:
     response = await client.get("/metadata", params={"skip": 1, "limit": 1})
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    body = response.json()
+    assert len(body["items"]) == 1
+    assert body["total"] == 3
 
 
 async def test_list_metadata_pagination_pages_do_not_overlap(client: AsyncClient) -> None:
     for i in range(5):
         await client.post("/metadata", json=make_payload(urn=f"urn:data:bigquery:test-project.sales.t{i}"))
 
-    page1 = (await client.get("/metadata", params={"skip": 0, "limit": 2})).json()
-    page2 = (await client.get("/metadata", params={"skip": 2, "limit": 2})).json()
-    page3 = (await client.get("/metadata", params={"skip": 4, "limit": 2})).json()
+    page1 = (await client.get("/metadata", params={"skip": 0, "limit": 2})).json()["items"]
+    page2 = (await client.get("/metadata", params={"skip": 2, "limit": 2})).json()["items"]
+    page3 = (await client.get("/metadata", params={"skip": 4, "limit": 2})).json()["items"]
 
     urns_by_page = [{item["urn"] for item in page} for page in (page1, page2, page3)]
     assert [len(page) for page in urns_by_page] == [2, 2, 1]
@@ -138,19 +142,21 @@ async def test_search_metadata_by_urn(client: AsyncClient) -> None:
     response = await client.get("/metadata", params={"urn": "urn:data:bigquery:test-project.sales.b"})
 
     assert response.status_code == 200
-    results = response.json()
-    assert len(results) == 1
-    assert results[0]["urn"] == "urn:data:bigquery:test-project.sales.b"
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["urn"] == "urn:data:bigquery:test-project.sales.b"
 
 
 async def test_search_metadata_by_nested_field(client: AsyncClient) -> None:
-    await client.post("/metadata", json=make_payload(urn="urn:a", asset={"name": "a", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "SALES"}))
-    await client.post("/metadata", json=make_payload(urn="urn:b", asset={"name": "b", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "MARKETING"}))
+    asset_a = {"name": "a", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "SALES"}
+    asset_b = {"name": "b", "asset_type": "TABLE", "environment": "PRODUCTION", "domain": "MARKETING"}
+    await client.post("/metadata", json=make_payload(urn="urn:a", asset=asset_a))
+    await client.post("/metadata", json=make_payload(urn="urn:b", asset=asset_b))
 
     response = await client.get("/metadata", params={"asset.domain": "MARKETING"})
 
     assert response.status_code == 200
-    results = response.json()
+    results = response.json()["items"]
     assert len(results) == 1
     assert results[0]["urn"] == "urn:b"
 
@@ -168,7 +174,7 @@ async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClie
     response = await client.get("/metadata", params={"asset.name": "compra", "source.platform": "postgresql"})
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    assert len(response.json()["items"]) == 1
 
 
 async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient) -> None:
@@ -179,7 +185,9 @@ async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient)
     response = await client.get("/metadata", params={"asset.name": ".*"})
 
     assert response.status_code == 200
-    assert response.json() == []
+    body = response.json()
+    assert body["items"] == []
+    assert body["total"] == 0
 
 
 async def test_get_metadata(client: AsyncClient) -> None:
@@ -251,7 +259,7 @@ async def test_update_metadata_with_null_structure_clears_it(client: AsyncClient
     assert response.status_code == 200
     assert response.json()["structure"] is None
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert versions[0]["columns"] == []
     assert versions[0]["change_summary"] == "coluna(s) removida(s): order_id"
 
@@ -265,7 +273,7 @@ async def test_update_metadata_logs_audit_event(client: AsyncClient) -> None:
         json={"security_and_privacy": {"sensitivity": "RESTRICTED"}},
     )
 
-    events = (await client.get("/audit_events")).json()
+    events = (await client.get("/audit_events")).json()["items"]
     update_events = [e for e in events if e["event_type"] == "UPDATED"]
     assert len(update_events) == 1
     assert update_events[0]["changed_fields"] == ["security_and_privacy"]
@@ -278,7 +286,7 @@ async def test_empty_patch_does_not_log_audit_event(client: AsyncClient) -> None
     response = await client.patch(f"/metadata/{metadata_id}", json={})
 
     assert response.status_code == 200
-    events = (await client.get("/audit_events")).json()
+    events = (await client.get("/audit_events")).json()["items"]
     assert not any(e["event_type"] == "UPDATED" for e in events)
 
 
@@ -288,7 +296,7 @@ async def test_create_metadata_with_structure_logs_schema_version(client: AsyncC
     created = await client.post("/metadata", json=payload)
     assert created.status_code == 201
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert len(versions) == 1
     assert versions[0]["metadata_urn"] == payload["urn"]
     assert versions[0]["columns"] == [{"name": "order_id", "data_type": "STRING", "description": None}]
@@ -303,7 +311,7 @@ async def test_update_structure_logs_new_schema_version_with_added_column(client
     new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}, {"name": "total", "data_type": "NUMERIC"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert len(versions) == 2
     newest = versions[0]
     assert len(newest["columns"]) == 2
@@ -320,7 +328,7 @@ async def test_update_structure_logs_removed_column(client: AsyncClient) -> None
     new_structure = {"columns": [{"name": "order_id", "data_type": "STRING"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert versions[0]["change_summary"] == "coluna(s) removida(s): legacy_flag"
 
 
@@ -332,7 +340,7 @@ async def test_update_structure_logs_changed_column_type(client: AsyncClient) ->
     new_structure = {"columns": [{"name": "total", "data_type": "NUMERIC"}]}
     await client.patch(f"/metadata/{metadata_id}", json={"structure": new_structure})
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert versions[0]["change_summary"] == "tipo alterado: total"
 
 
@@ -343,14 +351,14 @@ async def test_unrelated_patch_does_not_log_schema_version(client: AsyncClient) 
 
     await client.patch(f"/metadata/{metadata_id}", json={"security_and_privacy": {"sensitivity": "RESTRICTED"}})
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert len(versions) == 1
 
 
 async def test_create_metadata_without_structure_does_not_log_schema_version(client: AsyncClient) -> None:
     await client.post("/metadata", json=make_payload())
 
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     assert versions == []
 
 
@@ -368,15 +376,37 @@ async def test_malformed_id_returns_404(client: AsyncClient) -> None:
     assert (await client.delete("/metadata/not-a-valid-id")).status_code == 404
 
 
-async def test_delete_metadata(client: AsyncClient) -> None:
+async def test_delete_metadata_is_a_soft_delete(client: AsyncClient) -> None:
     created = await client.post("/metadata", json=make_payload())
     metadata_id = created.json()["id"]
 
     response = await client.delete(f"/metadata/{metadata_id}")
     assert response.status_code == 204
 
+    # não some: continua existindo, só marcado como deprecado (rastreabilidade de governança)
     follow_up = await client.get(f"/metadata/{metadata_id}")
-    assert follow_up.status_code == 404
+    assert follow_up.status_code == 200
+    assert follow_up.json()["asset"]["status"] == "DEPRECATED"
 
-    events = (await client.get("/audit_events")).json()
+    events = (await client.get("/audit_events")).json()["items"]
     assert any(e["event_type"] == "DELETED" for e in events)
+
+
+async def test_delete_metadata_referenced_by_data_flow_does_not_orphan_it(client: AsyncClient) -> None:
+    source = await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.source"))
+    await client.post("/metadata", json=make_payload(urn="urn:data:bigquery:test-project.sales.target"))
+    source_id = source.json()["id"]
+    await client.post(
+        "/data_flows",
+        json={
+            "source_urn": "urn:data:bigquery:test-project.sales.source",
+            "target_urn": "urn:data:bigquery:test-project.sales.target",
+        },
+    )
+
+    # como é soft delete, a urn continua existindo — nada fica órfão
+    response = await client.delete(f"/metadata/{source_id}")
+    assert response.status_code == 204
+
+    flows = (await client.get("/data_flows")).json()["items"]
+    assert flows[0]["source_urn"] == "urn:data:bigquery:test-project.sales.source"

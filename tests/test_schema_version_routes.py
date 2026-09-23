@@ -17,7 +17,7 @@ metadata_payload = {
 
 async def test_schema_versions_are_read_only(client: AsyncClient) -> None:
     await client.post("/metadata", json=metadata_payload)
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     version_id = versions[0]["id"]
 
     # schema_versions não tem POST/PATCH/DELETE
@@ -28,7 +28,7 @@ async def test_schema_versions_are_read_only(client: AsyncClient) -> None:
 
 async def test_get_schema_version(client: AsyncClient) -> None:
     await client.post("/metadata", json=metadata_payload)
-    versions = (await client.get("/schema_versions")).json()
+    versions = (await client.get("/schema_versions")).json()["items"]
     version_id = versions[0]["id"]
 
     response = await client.get(f"/schema_versions/{version_id}")

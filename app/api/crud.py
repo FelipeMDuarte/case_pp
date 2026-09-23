@@ -1,3 +1,5 @@
+from typing import Generic, TypeVar
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -13,11 +15,21 @@ from app.api.utils import (
 from app.connectors.abstract_connector import DuplicateError
 from app.db import ConnectorFactory, get_connector_factory
 
+T = TypeVar("T")
+
+
+class Page(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    skip: int
+    limit: int
+
+
 # Primeiro função para endpoints read-only, depois função para endpoints com escrita, reutilizando a primeira.
 def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> APIRouter:
     router = APIRouter(prefix=f"/{collection_name}", tags=[collection_name])
 
-    @router.get("", response_model=list[out_model])
+    @router.get("", response_model=Page[out_model])
     async def list_all(
         request: Request,
         skip: int = Query(0, ge=0),
@@ -25,7 +37,10 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
         connector_factory: ConnectorFactory = Depends(get_connector_factory),
     ):
         connector = connector_factory(collection_name)
-        return await connector.list(skip, limit, filters=query_filters(request))
+        filters = query_filters(request)
+        items = await connector.list(skip, limit, filters=filters)
+        total = await connector.count(filters=filters)
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
 
     @router.get("/{item_id}", response_model=out_model)
     async def get_one(item_id: str, connector_factory: ConnectorFactory = Depends(get_connector_factory)):
@@ -46,6 +61,7 @@ def build_crud_router(
     log_audit: bool = False,
     track_schema: bool = False,
     validate_refs: dict[str, str] | None = None,  # para validar referencias de urn
+    soft_delete: dict[str, str] | None = None, 
 ) -> APIRouter:
     router = build_read_only_router(collection_name, out_model)
 
@@ -60,8 +76,8 @@ def build_crud_router(
         connector = connector_factory(collection_name)
         try:
             doc = await connector.create(payload)
-        except DuplicateError:
-            raise HTTPException(409, duplicate_message(collection_name))
+        except DuplicateError as exc:
+            raise HTTPException(409, duplicate_message(collection_name)) from exc
         if log_audit:
             await write_audit_event(connector_factory, doc["urn"], "CREATED", list(payload.model_dump().keys()))
         if track_schema and doc.get("structure"):
@@ -95,7 +111,10 @@ def build_crud_router(
         doc = await connector.get(item_id)
         if not doc:
             raise HTTPException(404, not_found_message(collection_name, item_id))
-        await connector.delete(item_id)
+        if soft_delete:
+            await connector.set_fields(item_id, soft_delete)
+        else:
+            await connector.delete(item_id)
         if log_audit:
             await write_audit_event(connector_factory, doc["urn"], "DELETED", [])
 

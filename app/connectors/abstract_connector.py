@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class DuplicateError(Exception):
     """Levantado quando uma escrita viola uma restrição de unicidade do connector."""
-
+    # Necessário porque erros de duplicata são diferentes em bancos diferentes
 
 class AbstractConnector(ABC):
     """Contrato que qualquer connector de persistência precisa cumprir (Mongo, Postgres, etc.)."""
@@ -20,7 +20,13 @@ class AbstractConnector(ABC):
     async def list(self, skip: int = 0, limit: int = 100, filters: dict[str, str] | None = None) -> list[dict]: ...
 
     @abstractmethod
+    async def count(self, filters: dict[str, str] | None = None) -> int: ...
+
+    @abstractmethod
     async def update(self, id: str, payload: BaseModel) -> dict | None: ...
+
+    @abstractmethod
+    async def set_fields(self, id: str, fields: dict) -> dict | None: ...
 
     @abstractmethod
     async def delete(self, id: str) -> bool: ...

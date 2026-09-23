@@ -6,7 +6,13 @@ from app.models.schema_version import SchemaVersionOut
 
 # CRUD inteiro
 metadata_router = build_crud_router(
-    "metadata", MetadataCreate, MetadataUpdate, MetadataOut, log_audit=True, track_schema=True
+    "metadata",
+    MetadataCreate,
+    MetadataUpdate,
+    MetadataOut,
+    log_audit=True,
+    track_schema=True,
+    soft_delete={"asset.status": "DEPRECATED"},
 )
 data_flow_router = build_crud_router(
     "data_flows",

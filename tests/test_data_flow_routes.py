@@ -66,7 +66,9 @@ async def test_list_data_flows(client: AsyncClient) -> None:
     response = await client.get("/data_flows")
 
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    body = response.json()
+    assert len(body["items"]) == 2
+    assert body["total"] == 2
 
 
 async def test_update_data_flow_deactivates(client: AsyncClient) -> None:

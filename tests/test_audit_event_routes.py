@@ -16,7 +16,7 @@ metadata_payload = {
 
 async def test_audit_events_are_read_only(client: AsyncClient) -> None:
     await client.post("/metadata", json=metadata_payload)
-    events = (await client.get("/audit_events")).json()
+    events = (await client.get("/audit_events")).json()["items"]
     event_id = events[0]["id"]
 
     # audit_events não tem POST/PATCH/DELETE
@@ -27,7 +27,7 @@ async def test_audit_events_are_read_only(client: AsyncClient) -> None:
 
 async def test_get_audit_event(client: AsyncClient) -> None:
     await client.post("/metadata", json=metadata_payload)
-    events = (await client.get("/audit_events")).json()
+    events = (await client.get("/audit_events")).json()["items"]
     event_id = events[0]["id"]
 
     response = await client.get(f"/audit_events/{event_id}")

@@ -31,32 +31,34 @@ class MongoConnector(AbstractConnector):
         return serialize(doc) if doc else None
 
     async def list(self, skip: int = 0, limit: int = 100, filters: dict[str, str] | None = None) -> list[dict]:
-        if not filters:
-            # sem filtro, o Mongo pagina de verdade (skip/limit na query) — não tem
-            # motivo pra trazer a coleção inteira pra memória só pra cortar em Python
+        if not filters: # paginate do banco
             cursor = self.collection.find().sort("created_at", -1).skip(skip).limit(limit)
             return [serialize(doc) async for doc in cursor]
 
-        # com filtro, precisa ler tudo e filtrar em Python antes de paginar — a busca
-        # parcial/case-insensitive não é uma query nativa do Mongo (ver matches())
         cursor = self.collection.find().sort("created_at", -1)
         docs = [serialize(doc) async for doc in cursor]
         docs = [doc for doc in docs if matches(doc, filters)]
         return docs[skip : skip + limit]
 
-    async def update(self, id: str, payload: BaseModel) -> dict | None:
-        oid = to_object_id(id)
-        if oid is None:
-            return None
+    async def count(self, filters: dict[str, str] | None = None) -> int:
+        if not filters:
+            return await self.collection.count_documents({})
+        cursor = self.collection.find()
+        docs = [serialize(doc) async for doc in cursor]
+        return sum(1 for doc in docs if matches(doc, filters))
 
+    async def update(self, id: str, payload: BaseModel) -> dict | None:
         changes = payload.model_dump(exclude_unset=True)
         if not changes:
             return await self.get(id)
+        return await self.set_fields(id, flatten(changes))
 
-        changes = flatten(changes)
-        changes["updated_at"] = utcnow()
+    async def set_fields(self, id: str, fields: dict) -> dict | None:
+        oid = to_object_id(id)
+        if oid is None:
+            return None
         doc = await self.collection.find_one_and_update(
-            {"_id": oid}, {"$set": changes}, return_document=ReturnDocument.AFTER
+            {"_id": oid}, {"$set": {**fields, "updated_at": utcnow()}}, return_document=ReturnDocument.AFTER
         )
         return serialize(doc) if doc else None
 
@@ -68,8 +70,6 @@ class MongoConnector(AbstractConnector):
         return result.deleted_count == 1
 
     async def exists(self, field: str, value: str) -> bool:
-        # busca exata (query do Mongo), diferente do matches() usado em list() que é
-        # parcial/case-insensitive — aqui precisamos saber se o valor bate certinho
         return await self.collection.find_one({field: value}) is not None
 
 
@@ -86,9 +86,6 @@ def serialize(doc: dict) -> dict:
 
 
 def flatten(changes: dict, prefix: str = "") -> dict:
-    # $set com um dict aninhado como valor SUBSTITUI o subdocumento inteiro no Mongo, não
-    # faz merge campo a campo. Achatar em notação de ponto ("security_and_privacy.sensitivity")
-    # faz o Mongo mexer só no campo enviado, preservando os campos-irmãos que não vieram no PATCH.
     flat = {}
     for key, value in changes.items():
         path = f"{prefix}.{key}" if prefix else key
