@@ -24,6 +24,25 @@ def dangling_reference_message(field: str, value: str, resource: str) -> str:
     return f"No {resource} was found with urn '{value}' (from '{field}'). Create it first, or check for typos."
 
 
+def already_deleted_message(resource: str, urn: str) -> str:
+    return f"This {resource} ('{urn}') has already been marked as deprecated."
+
+
+def get_nested(doc: dict, dotted_path: str):
+    value = doc
+    for part in dotted_path.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
+def validation_error_message(errors: list[dict]) -> str:
+    parts = []
+    for error in errors:
+        field = ".".join(str(part) for part in error["loc"] if part not in ("body", "query", "path"))
+        parts.append(f"{field}: {error['msg']}" if field else error["msg"])
+    return "; ".join(parts)
+
+
 async def write_audit_event(
     connector_factory: ConnectorFactory, urn: str, event_type: str, changed_fields: list[str]
 ) -> None:

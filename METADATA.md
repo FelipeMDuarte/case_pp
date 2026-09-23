@@ -24,6 +24,8 @@ Os campos com valor fechado (`asset_type`, `environment`, `status`, `layer`, `se
 
 `DELETE /metadata/{id}` não remove o documento: seta `asset.status = "DEPRECATED"` e continua existindo normalmente pra quem consultar (rastreabilidade é o ponto central de um catálogo de governança — sumir com o registro apagaria o histórico). Consequência prática: um `data_flow` que referencia essa urn nunca fica órfão, porque a urn nunca deixa de existir. `data_flows` continua com `DELETE` de verdade (hard delete) — o soft-delete ali já é resolvido pelo campo `active`, alternado via `PATCH`.
 
+Chamar `DELETE` de novo num metadado que já está `DEPRECATED` devolve `410 Gone`, não `204` — repetir o delete não é um no-op silencioso, o cliente precisa saber que aquele registro já tinha sido desativado antes dessa chamada.
+
 ### Atualização parcial (PATCH)
 
 `PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos.

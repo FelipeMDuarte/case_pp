@@ -21,4 +21,6 @@ def configure_logging(debug: bool) -> None:
 
     root = logging.getLogger()
     root.handlers = [handler]
-    root.setLevel(logging.DEBUG if debug else logging.INFO)
+    root.setLevel(logging.WARNING)
+
+    logging.getLogger("case_pp").setLevel(logging.DEBUG if debug else logging.INFO)

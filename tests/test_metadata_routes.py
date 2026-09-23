@@ -37,6 +37,7 @@ async def test_create_metadata(client: AsyncClient) -> None:
     assert body["asset"]["name"] == "orders"
     assert "id" in body
     assert "created_at" in body
+    assert response.headers["location"] == f"/metadata/{body['id']}"
 
 
 async def test_create_metadata_logs_audit_event(client: AsyncClient) -> None:
@@ -76,6 +77,8 @@ async def test_create_metadata_missing_required_field(client: AsyncClient) -> No
     response = await client.post("/metadata", json=payload)
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+    assert "source" in response.json()["detail"]
 
 
 async def test_create_metadata_rejects_invalid_enum_value(client: AsyncClient) -> None:
@@ -127,6 +130,7 @@ async def test_list_metadata_rejects_negative_skip(client: AsyncClient) -> None:
     response = await client.get("/metadata", params={"skip": -1})
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
 
 
 async def test_list_metadata_rejects_limit_above_max(client: AsyncClient) -> None:
@@ -179,9 +183,6 @@ async def test_search_metadata_is_case_insensitive_and_partial(client: AsyncClie
 
 async def test_search_metadata_treats_input_as_literal_text(client: AsyncClient) -> None:
     await client.post("/metadata", json=make_payload())
-
-    # a busca é substring em Python puro, então ".*" é só texto
-    # não deveria casar com nada aqui
     response = await client.get("/metadata", params={"asset.name": ".*"})
 
     assert response.status_code == 200
@@ -238,7 +239,6 @@ async def test_update_metadata_preserves_sibling_fields_not_sent(client: AsyncCl
     created = await client.post("/metadata", json=payload)
     metadata_id = created.json()["id"]
 
-    # manda o "asset" de novo sem "tags" — tags não deveria sumir
     response = await client.patch(
         f"/metadata/{metadata_id}",
         json={"asset": {"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "layer": "GOLD"}},
@@ -383,13 +383,23 @@ async def test_delete_metadata_is_a_soft_delete(client: AsyncClient) -> None:
     response = await client.delete(f"/metadata/{metadata_id}")
     assert response.status_code == 204
 
-    # não some: continua existindo, só marcado como deprecado (rastreabilidade de governança)
     follow_up = await client.get(f"/metadata/{metadata_id}")
     assert follow_up.status_code == 200
     assert follow_up.json()["asset"]["status"] == "DEPRECATED"
 
     events = (await client.get("/audit_events")).json()["items"]
     assert any(e["event_type"] == "DELETED" for e in events)
+
+
+async def test_delete_already_deprecated_metadata_returns_410(client: AsyncClient) -> None:
+    created = await client.post("/metadata", json=make_payload())
+    metadata_id = created.json()["id"]
+
+    first = await client.delete(f"/metadata/{metadata_id}")
+    assert first.status_code == 204
+
+    second = await client.delete(f"/metadata/{metadata_id}")
+    assert second.status_code == 410
 
 
 async def test_delete_metadata_referenced_by_data_flow_does_not_orphan_it(client: AsyncClient) -> None:
@@ -404,7 +414,6 @@ async def test_delete_metadata_referenced_by_data_flow_does_not_orphan_it(client
         },
     )
 
-    # como é soft delete, a urn continua existindo — nada fica órfão
     response = await client.delete(f"/metadata/{source_id}")
     assert response.status_code == 204
 
