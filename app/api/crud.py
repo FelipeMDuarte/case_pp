@@ -1,16 +1,19 @@
 from typing import Generic, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.api.utils import (
     already_deleted_message,
     dangling_reference_message,
+    deep_merge,
     duplicate_message,
     get_nested,
     not_found_message,
     query_filters,
+    self_reference_message,
     summarize_schema_change,
+    validation_error_message,
     write_audit_event,
     write_schema_version,
 )
@@ -55,6 +58,16 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
     return router
 
 
+def merge_and_validate(old_doc: dict, changes: dict, out_model: type[BaseModel]) -> dict:
+    merged_fields = {key: deep_merge(old_doc.get(key), value) for key, value in changes.items()}
+    try:
+        validated = out_model.model_validate({**old_doc, **merged_fields})
+    except ValidationError as exc:
+        raise HTTPException(422, validation_error_message(exc.errors())) from exc
+    validated_dump = validated.model_dump()
+    return {key: validated_dump[key] for key in merged_fields}
+
+
 def build_crud_router(
     collection_name: str,
     create_model: type[BaseModel],
@@ -63,7 +76,8 @@ def build_crud_router(
     log_audit: bool = False,
     track_schema: bool = False,
     validate_refs: dict[str, str] | None = None,  # para validar referencias de urn
-    soft_delete: dict[str, str] | None = None, 
+    forbid_self_reference: tuple[str, str] | None = None,
+    soft_delete: dict[str, str] | None = None,
 ) -> APIRouter:
     router = build_read_only_router(collection_name, out_model)
 
@@ -73,6 +87,10 @@ def build_crud_router(
         response: Response,
         connector_factory: ConnectorFactory = Depends(get_connector_factory),
     ):
+        if forbid_self_reference:
+            field_a, field_b = forbid_self_reference
+            if getattr(payload, field_a) == getattr(payload, field_b):
+                raise HTTPException(422, self_reference_message(field_a, field_b))
         if validate_refs:
             for field, ref_collection in validate_refs.items():
                 urn = getattr(payload, field)
@@ -98,18 +116,25 @@ def build_crud_router(
         item_id: str, payload: update_model, connector_factory: ConnectorFactory = Depends(get_connector_factory)  # type: ignore[valid-type]
     ):
         connector = connector_factory(collection_name)
-        old_doc = await connector.get(item_id) if track_schema else None
-        doc = await connector.update(item_id, payload)
-        if not doc:
+        old_doc = await connector.get(item_id)
+        if not old_doc:
             raise HTTPException(404, not_found_message(collection_name, item_id))
-        changed_fields = list(payload.model_dump(exclude_unset=True).keys())
-        if log_audit and changed_fields:
+
+        changes = payload.model_dump(exclude_unset=True)
+        if not changes:
+            return old_doc
+
+        merged_fields = merge_and_validate(old_doc, changes, out_model)
+        doc = await connector.set_fields(item_id, merged_fields)
+        changed_fields = list(changes.keys())
+        if log_audit:
             await write_audit_event(connector_factory, doc["urn"], "UPDATED", changed_fields)
         if track_schema and "structure" in changed_fields:
-            old_columns = ((old_doc or {}).get("structure") or {}).get("columns", [])
+            old_columns = (old_doc.get("structure") or {}).get("columns", [])
             new_columns = (doc.get("structure") or {}).get("columns", [])
-            summary = summarize_schema_change(old_columns, new_columns)
-            await write_schema_version(connector_factory, doc["urn"], doc.get("structure"), change_summary=summary)
+            if old_columns != new_columns:
+                summary = summarize_schema_change(old_columns, new_columns)
+                await write_schema_version(connector_factory, doc["urn"], doc.get("structure"), change_summary=summary)
         return doc
 
     @router.delete("/{item_id}", status_code=204)

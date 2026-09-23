@@ -12,6 +12,9 @@ API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orque
 ### Busca por URN
   É possível mas depende um pouco de escolhas do time sobre arquitetura e bancos
 
+### Busca por filtro é exata, não parcial
+  Filtro vira query nativa do Mongo (dot-notation direto, `?asset.status=ACTIVE`), case-sensitive. Paginação e contagem são nativas do Mongo em qualquer busca, com ou sem filtro.
+
 ## Pontos de Evolução do Projeto
 
 ### Modelagem 100% em Mongo não é ideal
@@ -26,9 +29,6 @@ API em FastAPI + Pydantic + MongoDB (Motor async), com Docker Compose para orque
 ### Consistência/atomicidade
   audit_event e schema_version são escritos em chamadas separadas depois do write principal, se o processo cair no meio, perde o rastro de auditoria.
   Pediria transação multi-documento (replica set) ou padrão outbox.
-
-### Busca com filtro 
-  Lê a coleção inteira pra RAM antes de filtrar não escala com volume real, produção pediria melhora/mudança.
 
 ### Versionamento de API
   Seria feito conforme necessário via prefix no include_router do FastAPI
@@ -45,6 +45,7 @@ app/
     utils.py         # efeitos colaterais das escritas (audit_events, schema_versions) e busca
     routers.py       # monta os routers de cada recurso e expõe all_routers
   logging_config.py  # configuração de logging + request-id por request
+  middleware.py       # middleware http que loga cada request (usa logging_config)
 ...
 ...
 .env.example                # variáveis dev
@@ -59,7 +60,7 @@ Em `METADATA.md` temos o modelo de dados completo (`metadata`, `data_flows`, `au
 
 ## Rodando com Docker
 
-Dev (`docker-compose.yml` — Mongo exposto em `localhost:27017`):
+Dev (`docker-compose.yml`, Mongo exposto em `localhost:27017`):
 
 ```bash
 docker compose up -d --build
@@ -117,18 +118,18 @@ ruff check .
 
 ## CI
 
-`.github/workflows/ci.yml` roda lint (`ruff`) e os testes a cada push/PR na `main` — o mesmo que rodar localmente, só que automático.
+`.github/workflows/ci.yml` roda lint (`ruff`) e os testes a cada push/PR na `main`, o mesmo que rodar localmente, só que automático.
 
 ## Logging
 
-Todo request gera um `request_id` e loga início, fim com status/duração, e o traceback completo se algo não tratado quebrar no meio — tudo com esse mesmo id, pra dar pra achar todas as linhas de um request específico no log.
+Todo request gera um `request_id` e loga início, fim com status/duração, e o traceback completo se algo não tratado quebrar no meio, tudo com esse mesmo id, pra dar pra achar todas as linhas de um request específico no log.
 
 ## Endpoints
 
 | Método | Rota                    | Descrição                                          |
 |--------|--------------------------|-----------------------------------------------------|
 | POST   | `/metadata`              | Cria um metadado (também loga `audit_event` e, se tiver `structure`, `schema_version`); `409` se a `urn` já existir |
-| GET    | `/metadata`               | Lista metadados; aceita qualquer campo como busca parcial (`?asset.name=compras&source.platform=postgresql`) |
+| GET    | `/metadata`               | Lista metadados; aceita qualquer campo como filtro exato, case-sensitive (`?asset.status=ACTIVE&source.platform=BIGQUERY`) |
 | GET    | `/metadata/{id}`          | Busca por id                                        |
 | PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga `audit_event`, e `schema_version` se mudar `structure`) |
 | DELETE | `/metadata/{id}`          | Soft delete: seta `asset.status = "DEPRECATED"`, o registro continua existindo (também loga um `audit_event`); `410` se já estava deprecado |
@@ -141,7 +142,7 @@ Todo request gera um `request_id` e loga início, fim com status/duração, e o 
 | GET    | `/audit_events/{id}`      | Busca por id                                        |
 | GET    | `/schema_versions`        | Lista o histórico de estrutura dos metadados (somente leitura) |
 | GET    | `/schema_versions/{id}`   | Busca por id                                        |
-| GET    | `/health`                 | Liveness — só confirma que a API está de pé, não depende do Mongo |
-| GET    | `/health/database`        | Readiness — dá `ping` no Mongo de verdade; `503` se não responder |
+| GET    | `/health`                 | Liveness: só confirma que a API está de pé, não depende do Mongo |
+| GET    | `/health/database`        | Readiness: dá `ping` no Mongo de verdade; `503` se não responder |
 
 Todo `GET` de lista devolve um envelope de paginação, não um array solto: `{"items": [...], "total": N, "skip": 0, "limit": 100}`.

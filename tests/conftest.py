@@ -11,7 +11,7 @@ from app.main import app, making_indexes_unique
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
     # podia usar dependency_overrides
-    db_client = AsyncMongoMockClient()
+    db_client = AsyncMongoMockClient(tz_aware=True)
     app.state.db_client = db_client
 
     await making_indexes_unique(db_client[get_settings().mongo_db])

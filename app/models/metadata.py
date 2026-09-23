@@ -55,7 +55,7 @@ class AssetInfo(BaseModel):
 
 
 class Source(BaseModel):
-    platform: str  # livre de propósito: catálogo aceita qualquer plataforma, não é uma lista fechada
+    platform: str
     fully_qualified_name: str
 
 
@@ -80,7 +80,7 @@ class Sensitivity(StrEnum):
 class SecurityAndPrivacy(BaseModel):
     sensitivity: Sensitivity = Sensitivity.INTERNAL
     contains_personal_data: bool = False
-    regulations: list[str] = []  # livre: lista de regulamentações cresce (LGPD, GDPR, CCPA...)
+    regulations: list[str] = []
 
 
 class QualityStatus(StrEnum):
@@ -98,7 +98,7 @@ class Quality(BaseModel):
 
 class Column(BaseModel):
     name: str
-    data_type: str  # livre de propósito: tipo de coluna é específico de cada plataforma
+    data_type: str
     description: str | None = None
 
 
@@ -165,21 +165,6 @@ class MetadataCreate(BaseModel):
     business_metadata: BusinessMetadata = BusinessMetadata()
     ownership: Ownership
     security_and_privacy: SecurityAndPrivacy = SecurityAndPrivacy()
-    quality: Quality | None = None
-    structure: TableStructure | None = None
-    last_reviewed_at: datetime | None = None
-
-
-class MetadataUpdate(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={"examples": [{"security_and_privacy": {"sensitivity": "RESTRICTED"}}]}
-    )
-
-    asset: AssetInfo | None = None
-    source: Source | None = None
-    business_metadata: BusinessMetadata | None = None
-    ownership: Ownership | None = None
-    security_and_privacy: SecurityAndPrivacy | None = None
     quality: Quality | None = None
     structure: TableStructure | None = None
     last_reviewed_at: datetime | None = None

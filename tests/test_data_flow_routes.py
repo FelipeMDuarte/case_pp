@@ -1,22 +1,13 @@
 import pytest
 from httpx import AsyncClient
 
+from tests.factories import make_metadata_payload
+
 pytestmark = pytest.mark.asyncio
 
 
-def make_metadata_payload(urn: str) -> dict:
-    return {
-        "urn": urn,
-        "asset": {"name": urn, "asset_type": "TABLE", "environment": "PRODUCTION"},
-        "source": {"platform": "BIGQUERY", "fully_qualified_name": urn},
-        "ownership": {
-            "technical_owner": {"type": "TEAM", "name": "Data Engineering", "contact": "data-engineering@example.com"}
-        },
-    }
-
-
 async def create_metadata(client: AsyncClient, urn: str) -> None:
-    await client.post("/metadata", json=make_metadata_payload(urn))
+    await client.post("/metadata", json=make_metadata_payload(urn=urn))
 
 
 async def create_default_metadata_pair(client: AsyncClient) -> None:
@@ -54,6 +45,15 @@ async def test_create_data_flow_with_unknown_urn_is_rejected(client: AsyncClient
     assert response.status_code == 422
 
 
+async def test_create_data_flow_rejects_self_reference(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+
+    same_urn = "urn:data:postgresql:commerce-prod.public.orders"
+    response = await client.post("/data_flows", json=make_payload(source_urn=same_urn, target_urn=same_urn))
+
+    assert response.status_code == 422
+
+
 async def test_list_data_flows(client: AsyncClient) -> None:
     await create_default_metadata_pair(client)
     await create_metadata(client, "urn:data:bigquery:test-project.sales.customers")
@@ -78,6 +78,18 @@ async def test_update_data_flow_deactivates(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["active"] is False
+
+
+async def test_update_data_flow_rejects_null_active(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+    created = await client.post("/data_flows", json=make_payload())
+    flow_id = created.json()["id"]
+
+    response = await client.patch(f"/data_flows/{flow_id}", json={"active": None})
+
+    assert response.status_code == 422
+    follow_up = await client.get(f"/data_flows/{flow_id}")
+    assert follow_up.status_code == 200
 
 
 async def test_delete_data_flow(client: AsyncClient) -> None:

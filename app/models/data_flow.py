@@ -26,7 +26,7 @@ class DataFlowUpdate(BaseModel):
     model_config = ConfigDict(json_schema_extra={"examples": [{"active": False}]})
 
     transformation: str | None = None
-    active: bool | None = None
+    active: bool = None  # type: ignore[assignment]
 
 
 class DataFlowOut(DataFlowCreate):
