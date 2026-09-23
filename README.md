@@ -27,7 +27,7 @@ Em `METADATA.md` temos o modelo de dados completo (`metadata`, `data_flows`, `au
 
 ## Rodando com Docker
 
-Dev (`docker-compose.yml` Mongo exposto em `localhost:27017`):
+Dev (`docker-compose.yml` — Mongo exposto em `localhost:27017`):
 
 ```bash
 docker compose up --build
@@ -80,12 +80,12 @@ pytest --cov=app --cov-report=term-missing
 
 | Método | Rota                    | Descrição                                          |
 |--------|--------------------------|-----------------------------------------------------|
-| POST   | `/metadata`              | Cria um metadado (também loga `audit_event` e, se tiver `structure`, `schema_version`) |
+| POST   | `/metadata`              | Cria um metadado (também loga `audit_event` e, se tiver `structure`, `schema_version`); `409` se a `urn` já existir |
 | GET    | `/metadata`               | Lista metadados; aceita qualquer campo como busca parcial (`?asset.name=compras&source.platform=postgresql`) |
 | GET    | `/metadata/{id}`          | Busca por id                                        |
 | PATCH  | `/metadata/{id}`          | Atualiza parcialmente (também loga `audit_event`, e `schema_version` se mudar `structure`) |
 | DELETE | `/metadata/{id}`          | Remove (também loga um `audit_event`)               |
-| POST   | `/data_flows`             | Cria uma relação de fluxo entre dois metadados      |
+| POST   | `/data_flows`             | Cria uma relação de fluxo entre dois metadados; `422` se `source_urn`/`target_urn` não existirem, `409` se o par já existir |
 | GET    | `/data_flows`             | Lista fluxos                                        |
 | GET    | `/data_flows/{id}`        | Busca por id                                        |
 | PATCH  | `/data_flows/{id}`        | Atualiza parcialmente                                |
@@ -94,4 +94,5 @@ pytest --cov=app --cov-report=term-missing
 | GET    | `/audit_events/{id}`      | Busca por id                                        |
 | GET    | `/schema_versions`        | Lista o histórico de estrutura dos metadados (somente leitura) |
 | GET    | `/schema_versions/{id}`   | Busca por id                                        |
-| GET    | `/health`                 | Healthcheck                                         |
+| GET    | `/health`                 | Liveness — só confirma que a API está de pé, não depende do Mongo |
+| GET    | `/health/database`        | Readiness — dá `ping` no Mongo de verdade; `503` se não responder |

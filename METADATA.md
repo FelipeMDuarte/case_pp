@@ -16,18 +16,18 @@ Este documento descreve o formato usado para armazenar os metadados no MongoDB.
 
 `metadata.urn` é o identificador global do dado, é usado como FK no Mongo.
 A URN não muda por causa de alterações de descrição, ownership ou classificação.
-Para garantir unicidade teríamos que criar um Index.
+A unicidade é garantida por um índice único de verdade (`urn`, criado no startup da API) — tentar criar dois metadados com a mesma URN devolve `409 Conflict`. Mesma coisa pra `data_flows`, no par (`source_urn`, `target_urn`): a mesma relação não pode ser declarada duas vezes, só atualizada via `PATCH`.
+
+Os campos com valor fechado (`asset_type`, `environment`, `status`, `layer`, `sensitivity`, `quality.status`, `ownership.*.type`, `audit_events.event_type`) são `Enum` .
 
 ### Atualização parcial (PATCH)
 
-`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos. Por baixo, isso é feito achatando o payload em notação de ponto (`security_and_privacy.sensitivity`) antes de mandar pro Mongo, porque um `$set` com um dict aninhado substituiria o subdocumento inteiro em vez de só o campo enviado.
-
+`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos.
 Mandar um campo explicitamente como `null` (ex: `{"structure": null}`) limpa esse campo por completo — isso é tratado como "a estrutura mudou pra vazia" e também gera uma versão em `schema_versions`.
 
 ### Busca
 
-`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`, inclusive em campo aninhado via notação de ponto. A busca é parcial e não faz distinção entre maiúsculas/minúsculas, pra alguém achar "essa tabela de postgres chamada compras" sem saber exatamente como foi cadastrada no catálogo:
-
+`GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`, inclusive em campo aninhado via notação de ponto. `skip` não pode ser negativo e `limit` vai de 1 até 100.
 ```
 GET /metadata?asset.name=compras&source.platform=postgresql
 GET /metadata?asset.domain=sales
@@ -76,8 +76,7 @@ Cada owner é `{ "type": "PERSON" | "TEAM", "name": "...", "contact": "..." }`.
 
 ### `quality`
 
-Resumo da última checagem de qualidade do dado: `status` (`PASSED`, `WARNING`, `FAILED`), `score` (0 a 1), `checked_at` e `issues`.
-Neste case, `quality` é preenchido manualmente não existe um script automático rodando checagens, mas poderia ter sem problemas.
+Neste case, `quality` é preenchido manualmente, entre 0 e 1, não existe um script automático rodando checagens, mas poderia ter sem problemas.
 
 ### `structure`
 
@@ -103,6 +102,8 @@ Representa o fluxo interno de dados: de onde um dado veio e pra onde foi. Uma re
 | `target_urn` | URN do metadado de destino. |
 | `transformation` | Descrição livre e opcional do que foi feito nos dados entre `source` e `target`. |
 | `active` | `false` quando a relação deixou de existir |
+
+`source_urn` e `target_urn` precisam corresponder a um `metadata` já cadastrado. 
 
 ## `audit_events`
 
