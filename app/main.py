@@ -1,13 +1,19 @@
+import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError
 
 from app.api.routers import all_routers
 from app.config import get_settings
+from app.logging_config import configure_logging, request_id_ctx
 
 settings = get_settings()
+configure_logging(settings.debug)
+logger = logging.getLogger("case_pp")
 
 
 @asynccontextmanager
@@ -26,6 +32,27 @@ async def making_indexes_unique(database) -> None:
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=start_mongo)
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    token = request_id_ctx.set(request_id)
+    start = time.perf_counter()
+    try:
+        logger.info("%s %s - started", request.method, request.url.path)
+        response = await call_next(request)
+    except Exception:
+        logger.exception("%s %s - unhandled error", request.method, request.url.path)
+        raise
+    else:
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info("%s %s - %s (%.1fms)", request.method, request.url.path, response.status_code, duration_ms)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        request_id_ctx.reset(token)
+
+
 # Incluindo rotas da API
 for router in all_routers:
     app.include_router(router)
@@ -40,6 +67,6 @@ async def health():
 async def health_database():
     try:
         await app.state.db_client.admin.command("ping")
-    except PyMongoError:
-        raise HTTPException(503, "Database is not reachable.")
+    except PyMongoError as exc:
+        raise HTTPException(503, "Database is not reachable.") from exc
     return {"status": "ok"}
