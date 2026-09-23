@@ -1,28 +1,61 @@
 from datetime import datetime
+from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class OwnerType(StrEnum):
+    PERSON = "PERSON"
+    TEAM = "TEAM"
 
 
 class Owner(BaseModel):
-    type: str  # PERSON | TEAM
+    type: OwnerType
     name: str
     contact: str
+
+
+class AssetType(StrEnum):
+    TABLE = "TABLE"
+    VIEW = "VIEW"
+    TOPIC = "TOPIC"
+    FILE = "FILE"
+    DASHBOARD = "DASHBOARD"
+    MODEL = "MODEL"
+
+
+class AssetEnvironment(StrEnum):
+    DEVELOPMENT = "DEVELOPMENT"
+    STAGING = "STAGING"
+    PRODUCTION = "PRODUCTION"
+
+
+class AssetStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    DEPRECATED = "DEPRECATED"
+
+
+class Layer(StrEnum):
+    BRONZE = "BRONZE"
+    SILVER = "SILVER"
+    GOLD = "GOLD"
 
 
 class AssetInfo(BaseModel):
     name: str
     display_name: str | None = None
     description: str | None = None
-    asset_type: str  # TABLE, VIEW, TOPIC, FILE, DASHBOARD, MODEL
-    environment: str  # DEVELOPMENT, STAGING, PRODUCTION
-    status: str = "ACTIVE"  # ACTIVE, INACTIVE, DEPRECATED
+    asset_type: AssetType
+    environment: AssetEnvironment
+    status: AssetStatus = AssetStatus.ACTIVE
     domain: str | None = None
-    layer: str | None = None  # BRONZE, SILVER, GOLD
+    layer: Layer | None = None
     tags: list[str] = []
 
 
 class Source(BaseModel):
-    platform: str
+    platform: str  # livre de propósito: catálogo aceita qualquer plataforma, não é uma lista fechada
     fully_qualified_name: str
 
 
@@ -37,22 +70,35 @@ class Ownership(BaseModel):
     data_steward: Owner | None = None
 
 
+class Sensitivity(StrEnum):
+    PUBLIC = "PUBLIC"
+    INTERNAL = "INTERNAL"
+    CONFIDENTIAL = "CONFIDENTIAL"
+    RESTRICTED = "RESTRICTED"
+
+
 class SecurityAndPrivacy(BaseModel):
-    sensitivity: str = "INTERNAL"  # PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED
+    sensitivity: Sensitivity = Sensitivity.INTERNAL
     contains_personal_data: bool = False
-    regulations: list[str] = []
+    regulations: list[str] = []  # livre: lista de regulamentações cresce (LGPD, GDPR, CCPA...)
+
+
+class QualityStatus(StrEnum):
+    PASSED = "PASSED"
+    WARNING = "WARNING"
+    FAILED = "FAILED"
 
 
 class Quality(BaseModel):
-    status: str  # PASSED, WARNING, FAILED
-    score: float
+    status: QualityStatus
+    score: float = Field(ge=0, le=1)
     checked_at: datetime
     issues: list[str] = []
 
 
 class Column(BaseModel):
     name: str
-    data_type: str
+    data_type: str  # livre de propósito: tipo de coluna é específico de cada plataforma
     description: str | None = None
 
 

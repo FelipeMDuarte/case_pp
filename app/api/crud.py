@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.utils import (
+    dangling_reference_message,
+    duplicate_message,
     not_found_message,
     query_filters,
     summarize_schema_change,
     write_audit_event,
     write_schema_version,
 )
+from app.connectors.abstract_connector import DuplicateError
 from app.db import ConnectorFactory, get_connector_factory
 
 # Primeiro função para endpoints read-only, depois função para endpoints com escrita, reutilizando a primeira.
@@ -17,8 +20,8 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
     @router.get("", response_model=list[out_model])
     async def list_all(
         request: Request,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int = Query(0, ge=0),
+        limit: int = Query(100, ge=1, le=100),
         connector_factory: ConnectorFactory = Depends(get_connector_factory),
     ):
         connector = connector_factory(collection_name)
@@ -41,14 +44,24 @@ def build_crud_router(
     update_model: type[BaseModel],
     out_model: type[BaseModel],
     log_audit: bool = False,
-    track_schema: bool = False, 
+    track_schema: bool = False,
+    validate_refs: dict[str, str] | None = None,  # para validar referencias de urn
 ) -> APIRouter:
     router = build_read_only_router(collection_name, out_model)
 
     @router.post("", response_model=out_model, status_code=201)
     async def create(payload: create_model, connector_factory: ConnectorFactory = Depends(get_connector_factory)):  # type: ignore[valid-type]
+        if validate_refs:
+            for field, ref_collection in validate_refs.items():
+                urn = getattr(payload, field)
+                ref_connector = connector_factory(ref_collection)
+                if not await ref_connector.exists("urn", urn):
+                    raise HTTPException(422, dangling_reference_message(field, urn, ref_collection))
         connector = connector_factory(collection_name)
-        doc = await connector.create(payload)
+        try:
+            doc = await connector.create(payload)
+        except DuplicateError:
+            raise HTTPException(409, duplicate_message(collection_name))
         if log_audit:
             await write_audit_event(connector_factory, doc["urn"], "CREATED", list(payload.model_dump().keys()))
         if track_schema and doc.get("structure"):

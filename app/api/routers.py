@@ -8,7 +8,13 @@ from app.models.schema_version import SchemaVersionOut
 metadata_router = build_crud_router(
     "metadata", MetadataCreate, MetadataUpdate, MetadataOut, log_audit=True, track_schema=True
 )
-data_flow_router = build_crud_router("data_flows", DataFlowCreate, DataFlowUpdate, DataFlowOut)
+data_flow_router = build_crud_router(
+    "data_flows",
+    DataFlowCreate,
+    DataFlowUpdate,
+    DataFlowOut,
+    validate_refs={"source_urn": "metadata", "target_urn": "metadata"},
+)
 
 # Read-only
 audit_events_router = build_read_only_router("audit_events", AuditEventOut)

@@ -16,6 +16,14 @@ def not_found_message(resource: str, item_id: str) -> str:
     return f"No {resource} was found with id '{item_id}'."
 
 
+def duplicate_message(resource: str) -> str:
+    return f"A {resource} with this identity already exists. Use PATCH to update the existing one instead."
+
+
+def dangling_reference_message(field: str, value: str, resource: str) -> str:
+    return f"No {resource} was found with urn '{value}' (from '{field}'). Create it first, or check for typos."
+
+
 async def write_audit_event(
     connector_factory: ConnectorFactory, urn: str, event_type: str, changed_fields: list[str]
 ) -> None:

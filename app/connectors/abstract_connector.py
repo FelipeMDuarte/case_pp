@@ -3,6 +3,10 @@ from abc import ABC, abstractmethod
 from pydantic import BaseModel
 
 
+class DuplicateError(Exception):
+    """Levantado quando uma escrita viola uma restrição de unicidade do connector."""
+
+
 class AbstractConnector(ABC):
     """Contrato que qualquer connector de persistência precisa cumprir (Mongo, Postgres, etc.)."""
 
@@ -20,3 +24,6 @@ class AbstractConnector(ABC):
 
     @abstractmethod
     async def delete(self, id: str) -> bool: ...
+
+    @abstractmethod
+    async def exists(self, field: str, value: str) -> bool: ...
