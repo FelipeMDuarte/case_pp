@@ -124,6 +124,12 @@ async def test_list_metadata_rejects_negative_skip(client: AsyncClient) -> None:
     assert isinstance(response.json()["detail"], str)
 
 
+async def test_list_metadata_rejects_mongo_operator_as_filter_key(client: AsyncClient) -> None:
+    for key in ("$where", "$or", "asset.status$ne"):
+        response = await client.get("/metadata", params={key: "1"})
+        assert response.status_code == 422, key
+
+
 async def test_list_metadata_rejects_limit_above_max(client: AsyncClient) -> None:
     response = await client.get("/metadata", params={"limit": 101})
 
