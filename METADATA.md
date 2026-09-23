@@ -28,8 +28,11 @@ Chamar `DELETE` de novo num metadado que já está `DEPRECATED` devolve `410 Gon
 
 ### Atualização parcial (PATCH)
 
-`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos.
-Mandar um campo explicitamente como `null` (ex: `{"structure": null}`) limpa esse campo por completo — isso é tratado como "a estrutura mudou pra vazia" e também gera uma versão em `schema_versions`.
+`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"asset": {"status": "INACTIVE"}}` só muda `status`, sem exigir `name`/`asset_type`/`environment` de novo e sem apagar o resto do `asset`. Isso vale pra qualquer bloco aninhado (`asset`, `source`, `ownership.business_owner`, etc.), inclusive quando o campo estava `null` antes (o merge cria o objeto do zero com o que foi mandado).
+
+Bloco obrigatório (não-nulo) não aceita `null` explícito — `{"asset": null}` devolve `422`, não `204`/`200` com um documento quebrado. Só os campos que já são opcionais em `MetadataOut` (`quality`, `structure`, `last_reviewed_at`) aceitam `null` como forma de limpar. Mandar `null` nesses (ex: `{"structure": null}`) limpa o campo por completo — isso é tratado como "a estrutura mudou pra vazia" e também gera uma versão em `schema_versions`.
+
+Antes de gravar, o documento já mesclado com a mudança é validado contra o schema de saída — se o resultado não fechar um objeto válido (ex: `{"quality": {"score": 0.8}}` quando `quality` ainda era `null`, faltando `status`/`checked_at`), a API devolve `422` em vez de gravar um registro incompleto que quebraria numa leitura futura.
 
 ### Busca
 

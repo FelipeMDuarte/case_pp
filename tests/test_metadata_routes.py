@@ -264,6 +264,60 @@ async def test_update_metadata_with_null_structure_clears_it(client: AsyncClient
     assert versions[0]["change_summary"] == "coluna(s) removida(s): order_id"
 
 
+async def test_update_rejects_null_on_required_blocks(client: AsyncClient) -> None:
+    created = await client.post("/metadata", json=make_payload())
+    metadata_id = created.json()["id"]
+
+    for field in ("asset", "source", "ownership"):
+        response = await client.patch(f"/metadata/{metadata_id}", json={field: None})
+        assert response.status_code == 422, field
+
+    # o registro não pode ter sido corrompido pelas tentativas acima
+    follow_up = await client.get(f"/metadata/{metadata_id}")
+    assert follow_up.status_code == 200
+
+
+async def test_update_asset_partial_preserves_other_asset_fields(client: AsyncClient) -> None:
+    payload = make_payload(asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    response = await client.patch(f"/metadata/{metadata_id}", json={"asset": {"status": "INACTIVE"}})
+
+    assert response.status_code == 200
+    asset = response.json()["asset"]
+    assert asset["status"] == "INACTIVE"
+    assert asset["name"] == "orders"
+    assert asset["tags"] == ["orders"]
+
+
+async def test_update_sets_nested_field_that_was_previously_null(client: AsyncClient) -> None:
+    created = await client.post("/metadata", json=make_payload())
+    metadata_id = created.json()["id"]
+
+    response = await client.patch(
+        f"/metadata/{metadata_id}",
+        json={"ownership": {"business_owner": {"type": "PERSON", "name": "Ana", "contact": "ana@example.com"}}},
+    )
+
+    assert response.status_code == 200
+    ownership = response.json()["ownership"]
+    assert ownership["business_owner"] == {"type": "PERSON", "name": "Ana", "contact": "ana@example.com"}
+    assert ownership["technical_owner"]["name"] == "Data Engineering"
+
+
+async def test_update_rejects_incomplete_block_that_was_previously_null(client: AsyncClient) -> None:
+    created = await client.post("/metadata", json=make_payload())
+    metadata_id = created.json()["id"]
+
+    # quality nunca foi setado (é null); mandar só um campo não dá pra formar um Quality válido
+    response = await client.patch(f"/metadata/{metadata_id}", json={"quality": {"score": 0.8}})
+
+    assert response.status_code == 422
+    follow_up = await client.get(f"/metadata/{metadata_id}")
+    assert follow_up.json()["quality"] is None
+
+
 async def test_update_metadata_logs_audit_event(client: AsyncClient) -> None:
     created = await client.post("/metadata", json=make_payload())
     metadata_id = created.json()["id"]

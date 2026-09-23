@@ -135,6 +135,28 @@ Só muda `sensitivity`; `contains_personal_data`/`regulations` continuam como es
 }
 ```
 
+### `PATCH /metadata/{id}` — atualização parcial de bloco com campo obrigatório
+
+`asset` tem campos obrigatórios (`name`, `asset_type`, `environment`), mesmo assim o merge parcial funciona — não precisa reenviar o objeto inteiro:
+
+```json
+{
+  "asset": {
+    "status": "INACTIVE"
+  }
+}
+```
+
+### `PATCH /metadata/{id}` — erro: `null` num bloco obrigatório (`422`)
+
+`asset`, `source` e `ownership` nunca podem ser nulos. Isso devolve `422`, não `204`/`200` com um documento quebrado:
+
+```json
+{
+  "asset": null
+}
+```
+
 ### `PATCH /metadata/{id}` — limpar a estrutura
 
 Usar no `id` da tabela do BigQuery (a que tem `structure`). Gera uma nova versão em `schema_versions` marcando as colunas como removidas.

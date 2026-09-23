@@ -35,6 +35,16 @@ def get_nested(doc: dict, dotted_path: str):
     return value
 
 
+# Fazendo junção de dict em python ao invés de no mongo para evitar problemas de nested field
+def deep_merge(current, changes):
+    if isinstance(changes, dict) and isinstance(current, dict):
+        merged = dict(current)
+        for key, value in changes.items():
+            merged[key] = deep_merge(current.get(key), value)
+        return merged
+    return changes
+
+
 def validation_error_message(errors: list[dict]) -> str:
     parts = []
     for error in errors:
@@ -62,7 +72,7 @@ async def write_schema_version(
     connector_factory: ConnectorFactory, urn: str, structure: dict | None, change_summary: str | None = None
 ) -> None:
     connector = connector_factory("schema_versions")
-    columns = (structure or {}).get("columns", [])  # structure pode ter sido limpo com PATCH {"structure": null}
+    columns = (structure or {}).get("columns", [])
     await connector.create(
         SchemaVersionCreate(
             metadata_urn=urn,

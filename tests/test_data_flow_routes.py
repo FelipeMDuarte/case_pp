@@ -80,6 +80,18 @@ async def test_update_data_flow_deactivates(client: AsyncClient) -> None:
     assert response.json()["active"] is False
 
 
+async def test_update_data_flow_rejects_null_active(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+    created = await client.post("/data_flows", json=make_payload())
+    flow_id = created.json()["id"]
+
+    response = await client.patch(f"/data_flows/{flow_id}", json={"active": None})
+
+    assert response.status_code == 422
+    follow_up = await client.get(f"/data_flows/{flow_id}")
+    assert follow_up.status_code == 200
+
+
 async def test_delete_data_flow(client: AsyncClient) -> None:
     await create_default_metadata_pair(client)
     created = await client.post("/data_flows", json=make_payload())

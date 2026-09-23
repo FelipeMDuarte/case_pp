@@ -23,9 +23,6 @@ class AbstractConnector(ABC):
     async def count(self, filters: dict[str, str] | None = None) -> int: ...
 
     @abstractmethod
-    async def update(self, id: str, payload: BaseModel) -> dict | None: ...
-
-    @abstractmethod
     async def set_fields(self, id: str, fields: dict) -> dict | None: ...
 
     @abstractmethod

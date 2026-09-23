@@ -47,12 +47,6 @@ class MongoConnector(AbstractConnector):
         docs = [serialize(doc) async for doc in cursor]
         return sum(1 for doc in docs if matches(doc, filters))
 
-    async def update(self, id: str, payload: BaseModel) -> dict | None:
-        changes = payload.model_dump(exclude_unset=True)
-        if not changes:
-            return await self.get(id)
-        return await self.set_fields(id, flatten(changes))
-
     async def set_fields(self, id: str, fields: dict) -> dict | None:
         oid = to_object_id(id)
         if oid is None:
@@ -83,17 +77,6 @@ def to_object_id(id: str) -> ObjectId | None:
 def serialize(doc: dict) -> dict:
     doc["id"] = str(doc.pop("_id"))
     return doc
-
-
-def flatten(changes: dict, prefix: str = "") -> dict:
-    flat = {}
-    for key, value in changes.items():
-        path = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict) and value:
-            flat.update(flatten(value, path))
-        else:
-            flat[path] = value
-    return flat
 
 
 def matches(doc: dict, filters: dict[str, str]) -> bool:

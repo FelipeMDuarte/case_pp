@@ -1,7 +1,8 @@
 from app.api.crud import build_crud_router, build_read_only_router
 from app.models.audit_event import AuditEventOut
 from app.models.data_flow import DataFlowCreate, DataFlowOut, DataFlowUpdate
-from app.models.metadata import MetadataCreate, MetadataOut, MetadataUpdate
+from app.models.metadata import MetadataCreate, MetadataOut
+from app.models.metadata_update import MetadataUpdate
 from app.models.schema_version import SchemaVersionOut
 
 # CRUD inteiro

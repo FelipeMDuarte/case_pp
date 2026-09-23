@@ -45,6 +45,7 @@ app/
     utils.py         # efeitos colaterais das escritas (audit_events, schema_versions) e busca
     routers.py       # monta os routers de cada recurso e expõe all_routers
   logging_config.py  # configuração de logging + request-id por request
+  middleware.py       # middleware http que loga cada request (usa logging_config)
 ...
 ...
 .env.example                # variáveis dev
