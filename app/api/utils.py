@@ -32,6 +32,10 @@ def self_reference_message(field_a: str, field_b: str) -> str:
     return f"'{field_a}' and '{field_b}' cannot be the same."
 
 
+def invalid_filter_message(key: str) -> str:
+    return f"'{key}' is not a valid filter field."
+
+
 def get_nested(doc: dict, dotted_path: str):
     value = doc
     for part in dotted_path.split("."):

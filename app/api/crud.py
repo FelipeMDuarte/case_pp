@@ -9,6 +9,7 @@ from app.api.utils import (
     deep_merge,
     duplicate_message,
     get_nested,
+    invalid_filter_message,
     not_found_message,
     query_filters,
     self_reference_message,
@@ -43,6 +44,9 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
     ):
         connector = connector_factory(collection_name)
         filters = query_filters(request)
+        for key in filters:
+            if "$" in key:
+                raise HTTPException(422, invalid_filter_message(key))
         items = await connector.list(skip, limit, filters=filters)
         total = await connector.count(filters=filters)
         return {"items": items, "total": total, "skip": skip, "limit": limit}
