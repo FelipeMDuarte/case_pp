@@ -76,6 +76,24 @@ async def test_create_metadata_missing_required_field(client: AsyncClient) -> No
     assert response.status_code == 422
 
 
+async def test_create_metadata_rejects_invalid_enum_value(client: AsyncClient) -> None:
+    payload = make_payload(asset={"name": "orders", "asset_type": "NOT_A_REAL_TYPE", "environment": "PRODUCTION"})
+
+    response = await client.post("/metadata", json=payload)
+
+    assert response.status_code == 422
+
+
+async def test_create_metadata_rejects_out_of_range_score(client: AsyncClient) -> None:
+    payload = make_payload(
+        quality={"status": "PASSED", "score": 1.5, "checked_at": "2026-01-01T00:00:00Z", "issues": []}
+    )
+
+    response = await client.post("/metadata", json=payload)
+
+    assert response.status_code == 422
+
+
 async def test_list_metadata_pagination(client: AsyncClient) -> None:
     for i in range(3):
         await client.post("/metadata", json=make_payload(urn=f"urn:data:bigquery:test-project.sales.{i}"))
@@ -84,6 +102,33 @@ async def test_list_metadata_pagination(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+async def test_list_metadata_pagination_pages_do_not_overlap(client: AsyncClient) -> None:
+    for i in range(5):
+        await client.post("/metadata", json=make_payload(urn=f"urn:data:bigquery:test-project.sales.t{i}"))
+
+    page1 = (await client.get("/metadata", params={"skip": 0, "limit": 2})).json()
+    page2 = (await client.get("/metadata", params={"skip": 2, "limit": 2})).json()
+    page3 = (await client.get("/metadata", params={"skip": 4, "limit": 2})).json()
+
+    urns_by_page = [{item["urn"] for item in page} for page in (page1, page2, page3)]
+    assert [len(page) for page in urns_by_page] == [2, 2, 1]
+    assert urns_by_page[0] & urns_by_page[1] == set()
+    assert urns_by_page[1] & urns_by_page[2] == set()
+    assert set.union(*urns_by_page) == {f"urn:data:bigquery:test-project.sales.t{i}" for i in range(5)}
+
+
+async def test_list_metadata_rejects_negative_skip(client: AsyncClient) -> None:
+    response = await client.get("/metadata", params={"skip": -1})
+
+    assert response.status_code == 422
+
+
+async def test_list_metadata_rejects_limit_above_max(client: AsyncClient) -> None:
+    response = await client.get("/metadata", params={"limit": 101})
+
+    assert response.status_code == 422
 
 
 async def test_search_metadata_by_urn(client: AsyncClient) -> None:
@@ -307,6 +352,14 @@ async def test_create_metadata_without_structure_does_not_log_schema_version(cli
 
     versions = (await client.get("/schema_versions")).json()
     assert versions == []
+
+
+async def test_create_duplicate_urn_is_rejected(client: AsyncClient) -> None:
+    await client.post("/metadata", json=make_payload())
+
+    response = await client.post("/metadata", json=make_payload())
+
+    assert response.status_code == 409
 
 
 async def test_malformed_id_returns_404(client: AsyncClient) -> None:

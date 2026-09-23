@@ -4,6 +4,28 @@ from httpx import AsyncClient
 pytestmark = pytest.mark.asyncio
 
 
+def make_metadata_payload(urn: str) -> dict:
+    return {
+        "urn": urn,
+        "asset": {"name": urn, "asset_type": "TABLE", "environment": "PRODUCTION"},
+        "source": {"platform": "BIGQUERY", "fully_qualified_name": urn},
+        "ownership": {
+            "technical_owner": {"type": "TEAM", "name": "Data Engineering", "contact": "data-engineering@example.com"}
+        },
+    }
+
+
+async def create_metadata(client: AsyncClient, urn: str) -> None:
+    await client.post("/metadata", json=make_metadata_payload(urn))
+
+
+async def create_default_metadata_pair(client: AsyncClient) -> None:
+    # data_flows valida que source_urn/target_urn existem em metadata, então os testes
+    # precisam catalogar os dois lados antes de criar a relação entre eles
+    await create_metadata(client, "urn:data:postgresql:commerce-prod.public.orders")
+    await create_metadata(client, "urn:data:bigquery:test-project.sales.orders")
+
+
 def make_payload(**overrides):
     payload = {
         "source_urn": "urn:data:postgresql:commerce-prod.public.orders",
@@ -15,6 +37,8 @@ def make_payload(**overrides):
 
 
 async def test_create_data_flow(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+
     response = await client.post("/data_flows", json=make_payload())
 
     assert response.status_code == 201
@@ -24,9 +48,20 @@ async def test_create_data_flow(client: AsyncClient) -> None:
     assert "id" in body
 
 
+async def test_create_data_flow_with_unknown_urn_is_rejected(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+
+    response = await client.post("/data_flows", json=make_payload(target_urn="urn:data:bigquery:does.not.exist"))
+
+    assert response.status_code == 422
+
+
 async def test_list_data_flows(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+    await create_metadata(client, "urn:data:bigquery:test-project.sales.customers")
+
     await client.post("/data_flows", json=make_payload())
-    await client.post("/data_flows", json=make_payload(transformation=None))
+    await client.post("/data_flows", json=make_payload(target_urn="urn:data:bigquery:test-project.sales.customers"))
 
     response = await client.get("/data_flows")
 
@@ -35,6 +70,7 @@ async def test_list_data_flows(client: AsyncClient) -> None:
 
 
 async def test_update_data_flow_deactivates(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
     created = await client.post("/data_flows", json=make_payload())
     flow_id = created.json()["id"]
 
@@ -45,6 +81,7 @@ async def test_update_data_flow_deactivates(client: AsyncClient) -> None:
 
 
 async def test_delete_data_flow(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
     created = await client.post("/data_flows", json=make_payload())
     flow_id = created.json()["id"]
 
@@ -65,3 +102,13 @@ async def test_delete_data_flow_not_found(client: AsyncClient) -> None:
     response = await client.delete("/data_flows/000000000000000000000000")
 
     assert response.status_code == 404
+
+
+async def test_create_duplicate_data_flow_is_rejected(client: AsyncClient) -> None:
+    await create_default_metadata_pair(client)
+    await client.post("/data_flows", json=make_payload())
+
+    # mesmo par source_urn/target_urn, só a transformação muda — ainda é duplicata
+    response = await client.post("/data_flows", json=make_payload(transformation="outra descrição"))
+
+    assert response.status_code == 409
