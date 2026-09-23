@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.api.utils import query_filters, summarize_schema_change, write_audit_event, write_schema_version
+from app.api.utils import (
+    not_found_message,
+    query_filters,
+    summarize_schema_change,
+    write_audit_event,
+    write_schema_version,
+)
 from app.db import ConnectorFactory, get_connector_factory
 
 # Primeiro função para endpoints read-only, depois função para endpoints com escrita, reutilizando a primeira.
@@ -23,7 +29,7 @@ def build_read_only_router(collection_name: str, out_model: type[BaseModel]) -> 
         connector = connector_factory(collection_name)
         doc = await connector.get(item_id)
         if not doc:
-            raise HTTPException(404, "Not found")
+            raise HTTPException(404, not_found_message(collection_name, item_id))
         return doc
 
     return router
@@ -59,14 +65,15 @@ def build_crud_router(
         old_doc = await connector.get(item_id) if track_schema else None
         doc = await connector.update(item_id, payload)
         if not doc:
-            raise HTTPException(404, "Not found")
+            raise HTTPException(404, not_found_message(collection_name, item_id))
         changed_fields = list(payload.model_dump(exclude_unset=True).keys())
         if log_audit and changed_fields:
             await write_audit_event(connector_factory, doc["urn"], "UPDATED", changed_fields)
         if track_schema and "structure" in changed_fields:
             old_columns = ((old_doc or {}).get("structure") or {}).get("columns", [])
-            summary = summarize_schema_change(old_columns, doc["structure"]["columns"])
-            await write_schema_version(connector_factory, doc["urn"], doc["structure"], change_summary=summary)
+            new_columns = (doc.get("structure") or {}).get("columns", [])
+            summary = summarize_schema_change(old_columns, new_columns)
+            await write_schema_version(connector_factory, doc["urn"], doc.get("structure"), change_summary=summary)
         return doc
 
     @router.delete("/{item_id}", status_code=204)
@@ -74,7 +81,7 @@ def build_crud_router(
         connector = connector_factory(collection_name)
         doc = await connector.get(item_id)
         if not doc:
-            raise HTTPException(404, "Not found")
+            raise HTTPException(404, not_found_message(collection_name, item_id))
         await connector.delete(item_id)
         if log_audit:
             await write_audit_event(connector_factory, doc["urn"], "DELETED", [])

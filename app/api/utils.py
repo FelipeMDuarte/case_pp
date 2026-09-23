@@ -12,6 +12,10 @@ def query_filters(request: Request) -> dict[str, str]:
     return {key: value for key, value in request.query_params.items() if key not in ("skip", "limit")}
 
 
+def not_found_message(resource: str, item_id: str) -> str:
+    return f"No {resource} was found with id '{item_id}'."
+
+
 async def write_audit_event(
     connector_factory: ConnectorFactory, urn: str, event_type: str, changed_fields: list[str]
 ) -> None:
@@ -28,13 +32,14 @@ async def write_audit_event(
 
 
 async def write_schema_version(
-    connector_factory: ConnectorFactory, urn: str, structure: dict, change_summary: str | None = None
+    connector_factory: ConnectorFactory, urn: str, structure: dict | None, change_summary: str | None = None
 ) -> None:
     connector = connector_factory("schema_versions")
+    columns = (structure or {}).get("columns", [])  # structure pode ter sido limpo com PATCH {"structure": null}
     await connector.create(
         SchemaVersionCreate(
             metadata_urn=urn,
-            columns=structure["columns"],
+            columns=columns,
             change_summary=change_summary,
             detected_at=datetime.now(timezone.utc),
         )

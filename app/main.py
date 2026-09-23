@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from app.config import get_settings
 from app.api.routers import all_routers
+from app.config import get_settings
 
 settings = get_settings()
 

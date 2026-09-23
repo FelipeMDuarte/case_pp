@@ -18,6 +18,12 @@ Este documento descreve o formato usado para armazenar os metadados no MongoDB.
 A URN não muda por causa de alterações de descrição, ownership ou classificação.
 Para garantir unicidade teríamos que criar um Index.
 
+### Atualização parcial (PATCH)
+
+`PATCH /metadata/{id}` faz merge de verdade, campo a campo, até no nível mais aninhado — mandar `{"security_and_privacy": {"sensitivity": "RESTRICTED"}}` só muda `sensitivity`, sem apagar `contains_personal_data`/`regulations` que já estavam salvos. Por baixo, isso é feito achatando o payload em notação de ponto (`security_and_privacy.sensitivity`) antes de mandar pro Mongo, porque um `$set` com um dict aninhado substituiria o subdocumento inteiro em vez de só o campo enviado.
+
+Mandar um campo explicitamente como `null` (ex: `{"structure": null}`) limpa esse campo por completo — isso é tratado como "a estrutura mudou pra vazia" e também gera uma versão em `schema_versions`.
+
 ### Busca
 
 `GET /metadata` (e os outros `GET` de lista) aceitam qualquer campo como query param além de `skip`/`limit`, inclusive em campo aninhado via notação de ponto. A busca é parcial e não faz distinção entre maiúsculas/minúsculas, pra alguém achar "essa tabela de postgres chamada compras" sem saber exatamente como foi cadastrada no catálogo:

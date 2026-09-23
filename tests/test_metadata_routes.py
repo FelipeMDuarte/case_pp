@@ -161,6 +161,56 @@ async def test_update_metadata(client: AsyncClient) -> None:
     assert response.json()["asset"]["name"] == "orders"
 
 
+async def test_update_metadata_preserves_unsent_nested_fields(client: AsyncClient) -> None:
+    payload = make_payload(
+        security_and_privacy={"sensitivity": "CONFIDENTIAL", "contains_personal_data": True, "regulations": ["LGPD"]}
+    )
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    response = await client.patch(
+        f"/metadata/{metadata_id}",
+        json={"security_and_privacy": {"sensitivity": "RESTRICTED"}},
+    )
+
+    assert response.status_code == 200
+    security = response.json()["security_and_privacy"]
+    assert security["sensitivity"] == "RESTRICTED"
+    assert security["contains_personal_data"] is True
+    assert security["regulations"] == ["LGPD"]
+
+
+async def test_update_metadata_preserves_sibling_fields_not_sent(client: AsyncClient) -> None:
+    payload = make_payload(asset={"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "tags": ["orders"]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    # manda o "asset" de novo sem "tags" — tags não deveria sumir
+    response = await client.patch(
+        f"/metadata/{metadata_id}",
+        json={"asset": {"name": "orders", "asset_type": "TABLE", "environment": "PRODUCTION", "layer": "GOLD"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["asset"]["tags"] == ["orders"]
+    assert response.json()["asset"]["layer"] == "GOLD"
+
+
+async def test_update_metadata_with_null_structure_clears_it(client: AsyncClient) -> None:
+    payload = make_payload(structure={"columns": [{"name": "order_id", "data_type": "STRING"}]})
+    created = await client.post("/metadata", json=payload)
+    metadata_id = created.json()["id"]
+
+    response = await client.patch(f"/metadata/{metadata_id}", json={"structure": None})
+
+    assert response.status_code == 200
+    assert response.json()["structure"] is None
+
+    versions = (await client.get("/schema_versions")).json()
+    assert versions[0]["columns"] == []
+    assert versions[0]["change_summary"] == "coluna(s) removida(s): order_id"
+
+
 async def test_update_metadata_logs_audit_event(client: AsyncClient) -> None:
     created = await client.post("/metadata", json=make_payload())
     metadata_id = created.json()["id"]

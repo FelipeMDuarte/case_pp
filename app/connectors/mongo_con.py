@@ -42,6 +42,7 @@ class MongoConnector(AbstractConnector):
         if not changes:
             return await self.get(id)
 
+        changes = flatten(changes)
         changes["updated_at"] = utcnow()
         doc = await self.collection.find_one_and_update(
             {"_id": oid}, {"$set": changes}, return_document=ReturnDocument.AFTER
@@ -66,6 +67,20 @@ def to_object_id(id: str) -> ObjectId | None:
 def serialize(doc: dict) -> dict:
     doc["id"] = str(doc.pop("_id"))
     return doc
+
+
+def flatten(changes: dict, prefix: str = "") -> dict:
+    # $set com um dict aninhado como valor SUBSTITUI o subdocumento inteiro no Mongo, não
+    # faz merge campo a campo. Achatar em notação de ponto ("security_and_privacy.sensitivity")
+    # faz o Mongo mexer só no campo enviado, preservando os campos-irmãos que não vieram no PATCH.
+    flat = {}
+    for key, value in changes.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict) and value:
+            flat.update(flatten(value, path))
+        else:
+            flat[path] = value
+    return flat
 
 
 def matches(doc: dict, filters: dict[str, str]) -> bool:
